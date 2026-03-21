@@ -1,0 +1,60 @@
+---
+# NFD Operator
+nfd_namespace: openshift-nfd
+nfd_operator_group_name: openshift-nfd
+nfd_subscription_name: nfd
+nfd_package_manifest: nfd
+nfd_cr_name: nfd-instance
+nfd_catalog_source: redhat-operators
+
+# NVIDIA GPU Operator
+nvidia_namespace: nvidia-gpu-operator
+nvidia_operator_group_name: nvidia-gpu-operator-group
+nvidia_subscription_name: gpu-operator-certified
+nvidia_package_manifest: gpu-operator-certified
+nvidia_catalog_source: certified-operators
+
+# cert-manager Operator
+certmanager_namespace: cert-manager-operator
+certmanager_operator_group_name: cert-manager-operator-group
+certmanager_subscription_name: openshift-cert-manager-operator
+certmanager_package_manifest: openshift-cert-manager-operator
+certmanager_catalog_source: redhat-operators
+
+# Kueue Operator
+kueue_namespace: openshift-kueue-operator
+kueue_operator_group_name: openshift-kueue-operator
+kueue_subscription_name: kueue-operator
+kueue_package_manifest: kueue-operator
+kueue_catalog_source: redhat-operators
+
+# Service Mesh Operator (KServe dependency)
+servicemesh_namespace: openshift-operators
+servicemesh_subscription_name: servicemeshoperator
+servicemesh_package_manifest: servicemeshoperator
+servicemesh_catalog_source: redhat-operators
+
+# Serverless Operator (KServe dependency)
+serverless_namespace: openshift-serverless
+serverless_operator_group_name: serverless-operators
+serverless_subscription_name: serverless-operator
+serverless_package_manifest: serverless-operator
+serverless_catalog_source: redhat-operators
+
+# MinIO
+minio_namespace: minio
+
+# OpenShift AI (RHOAI)
+rhoai_operator_namespace: redhat-ods-operator
+rhoai_applications_namespace: redhat-ods-applications
+rhoai_notebooks_namespace: rhods-notebooks
+rhoai_operator_group_name: redhat-ods-operator-group
+rhoai_subscription_name: rhods-operator
+rhoai_package_manifest: rhods-operator
+rhoai_catalog_source: redhat-operators
+
+# Timeouts
+operator_install_timeout: 600
+minio_ready_timeout: 300
+nfd_pods_timeout: 300
+installplan_timeout: 150

@@ -1,0 +1,124 @@
+kind: Project
+apiVersion: project.openshift.io/v1
+metadata:
+  name: kueue-system
+spec:
+  finalizers:
+    - kubernetes
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kueue-kueueviz-backend-read-access
+  namespace: kueue-system
+rules:
+  - apiGroups: ["kueue.x-k8s.io"]
+    resources: ["workloads", "clusterqueues", "localqueues", "resourceflavors"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "events", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kueue.x-k8s.io"]
+    resources: ["workloadpriorityclass"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kueue-kueueviz-backend-read-access-binding
+  namespace: kueue-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kueue-kueueviz-backend-read-access
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: kueue-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kueue-kueueviz-backend
+  namespace: kueue-system
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: kueueviz-backend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kueue-kueueviz-frontend
+  namespace: kueue-system
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: kueueviz-frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kueue-kueueviz-backend
+  namespace: kueue-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kueueviz-backend
+  template:
+    metadata:
+      labels:
+        app: kueueviz-backend
+    spec:
+      containers:
+        - name: backend
+          image: registry.k8s.io/kueue/kueueviz-backend:v0.13.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kueue-kueueviz-frontend
+  namespace: kueue-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kueueviz-frontend
+  template:
+    metadata:
+      labels:
+        app: kueueviz-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: registry.k8s.io/kueue/kueueviz-frontend:v0.13.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: REACT_APP_WEBSOCKET_URL
+              value: wss://backend.kueueviz.local
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 500m
+              memory: 512Mi

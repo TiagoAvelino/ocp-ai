@@ -1,0 +1,160 @@
+---
+- name: Create OpenShift AI operator namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ rhoai_operator_namespace }}"
+        labels:
+          openshift.io/cluster-monitoring: "true"
+
+- name: Create OpenShift AI applications namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ rhoai_applications_namespace }}"
+        labels:
+          openshift.io/cluster-monitoring: "true"
+
+- name: Create OpenShift AI notebooks namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ rhoai_notebooks_namespace }}"
+        labels:
+          openshift.io/cluster-monitoring: "true"
+
+- name: Create OpenShift AI OperatorGroup
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        name: "{{ rhoai_operator_group_name }}"
+        namespace: "{{ rhoai_operator_namespace }}"
+      spec: {}
+
+- name: Get RHOAI default channel from packagemanifest
+  kubernetes.core.k8s_info:
+    api_version: packages.operators.coreos.com/v1
+    kind: PackageManifest
+    name: "{{ rhoai_package_manifest }}"
+    namespace: openshift-marketplace
+  register: rhoai_pm
+
+- name: Set RHOAI channel and startingCSV
+  ansible.builtin.set_fact:
+    rhoai_channel: "{{ rhoai_pm.resources[0].status.defaultChannel }}"
+    rhoai_starting_csv: >-
+      {{ rhoai_pm.resources[0].status.channels
+         | selectattr('name', 'equalto', rhoai_pm.resources[0].status.defaultChannel)
+         | map(attribute='currentCSV') | first }}
+
+- name: Display RHOAI channel and CSV
+  ansible.builtin.debug:
+    msg: "RHOAI channel={{ rhoai_channel }}  startingCSV={{ rhoai_starting_csv }}"
+
+- name: Create OpenShift AI Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ rhoai_subscription_name }}"
+        namespace: "{{ rhoai_operator_namespace }}"
+      spec:
+        channel: "{{ rhoai_channel }}"
+        installPlanApproval: Manual
+        name: "{{ rhoai_package_manifest }}"
+        source: "{{ rhoai_catalog_source }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ rhoai_starting_csv }}"
+
+- name: Wait for RHOAI InstallPlan to be created
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    namespace: "{{ rhoai_operator_namespace }}"
+  register: rhoai_installplans
+  until: rhoai_installplans.resources | length > 0
+  retries: 30
+  delay: 5
+
+- name: Approve RHOAI InstallPlan
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ rhoai_installplans.resources[0].metadata.name }}"
+        namespace: "{{ rhoai_operator_namespace }}"
+      spec:
+        approved: true
+  when: not (rhoai_installplans.resources[0].spec.approved | default(false))
+
+- name: Wait for RHOAI CSV to succeed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ rhoai_operator_namespace }}"
+    name: "{{ rhoai_starting_csv }}"
+  register: rhoai_csv
+  until:
+    - rhoai_csv.resources | length > 0
+    - rhoai_csv.resources[0].status.phase | default('') == 'Succeeded'
+  retries: 60
+  delay: 10
+
+- name: Configure DSCInitialization for Service Mesh (KServe dependency)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: dscinitialization.opendatahub.io/v1
+      kind: DSCInitialization
+      metadata:
+        name: default-dsci
+      spec:
+        applicationsNamespace: "{{ rhoai_applications_namespace }}"
+        serviceMesh:
+          controlPlane:
+            metricsCollection: Istio
+            name: data-science-smcp
+            namespace: istio-system
+          managementState: Managed
+  ignore_errors: true
+
+- name: Apply DataScienceCluster CR
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../openshift-ai/datasciencecluster.yaml"
+
+- name: Create data science project namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: my-data-science-project
+        labels:
+          opendatahub.io/dashboard: "true"
+
+- name: Apply MinIO S3 connection secret
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../openshift-ai/secrets/minio-s3-connection.yaml"
+
+- name: OpenShift AI Operator is ready
+  ansible.builtin.debug:
+    msg: "OpenShift AI Operator installed, DataScienceCluster CR and MinIO S3 connection applied successfully."

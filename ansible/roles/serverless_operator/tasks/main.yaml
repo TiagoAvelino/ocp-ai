@@ -1,0 +1,99 @@
+---
+- name: Create Serverless Operator namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ serverless_namespace }}"
+
+- name: Create Serverless OperatorGroup
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        name: "{{ serverless_operator_group_name }}"
+        namespace: "{{ serverless_namespace }}"
+      spec: {}
+
+- name: Get Serverless default channel from packagemanifest
+  kubernetes.core.k8s_info:
+    api_version: packages.operators.coreos.com/v1
+    kind: PackageManifest
+    name: "{{ serverless_package_manifest }}"
+    namespace: openshift-marketplace
+  register: serverless_pm
+
+- name: Set Serverless channel and startingCSV
+  ansible.builtin.set_fact:
+    serverless_channel: "{{ serverless_pm.resources[0].status.defaultChannel }}"
+    serverless_starting_csv: >-
+      {{ serverless_pm.resources[0].status.channels
+         | selectattr('name', 'equalto', serverless_pm.resources[0].status.defaultChannel)
+         | map(attribute='currentCSV') | first }}
+
+- name: Display Serverless channel and CSV
+  ansible.builtin.debug:
+    msg: "Serverless channel={{ serverless_channel }}  startingCSV={{ serverless_starting_csv }}"
+
+- name: Create Serverless Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ serverless_subscription_name }}"
+        namespace: "{{ serverless_namespace }}"
+      spec:
+        channel: "{{ serverless_channel }}"
+        installPlanApproval: Manual
+        name: "{{ serverless_package_manifest }}"
+        source: "{{ serverless_catalog_source }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ serverless_starting_csv }}"
+
+- name: Wait for Serverless InstallPlan to be created
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    namespace: "{{ serverless_namespace }}"
+  register: serverless_installplans
+  until: serverless_installplans.resources | length > 0
+  retries: 30
+  delay: 5
+
+- name: Approve Serverless InstallPlan
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ serverless_installplans.resources[0].metadata.name }}"
+        namespace: "{{ serverless_namespace }}"
+      spec:
+        approved: true
+  when: not (serverless_installplans.resources[0].spec.approved | default(false))
+
+- name: Wait for Serverless CSV to succeed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ serverless_namespace }}"
+    name: "{{ serverless_starting_csv }}"
+  register: serverless_csv
+  until:
+    - serverless_csv.resources | length > 0
+    - serverless_csv.resources[0].status.phase | default('') == 'Succeeded'
+  retries: 60
+  delay: 10
+
+- name: Serverless Operator is ready
+  ansible.builtin.debug:
+    msg: >-
+      Serverless Operator installed successfully.
+      No KnativeServing created -- RHOAI will configure it automatically for KServe.

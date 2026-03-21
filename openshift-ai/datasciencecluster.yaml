@@ -1,0 +1,52 @@
+apiVersion: datasciencecluster.opendatahub.io/v1
+kind: DataScienceCluster
+metadata:
+  name: default-dsc
+spec:
+  components:
+    dashboard:
+      managementState: Managed
+
+    workbenches:
+      managementState: Managed
+      workbenchNamespace: rhods-notebooks
+
+    modelregistry:
+      managementState: Managed
+      registriesNamespace: rhoai-model-registries
+
+    aipipelines:
+      managementState: Managed
+      argoWorkflowsControllers:
+        managementState: Managed
+
+    kserve:
+      managementState: Managed
+      defaultDeploymentMode: Serverless
+      serving:
+        managementState: Managed
+        name: knative-serving
+        ingressGateway:
+          certificate:
+            secretName: knative-serving-cert
+            type: OpenshiftDefaultIngress
+
+    kueue:
+      managementState: Removed
+      defaultClusterQueueName: default
+      defaultLocalQueueName: default
+
+    ray:
+      managementState: Managed
+
+    trainingoperator:
+      managementState: Removed
+
+    feastoperator:
+      managementState: Removed
+
+    trustyai:
+      managementState: Removed
+
+    llamastackoperator:
+      managementState: Removed

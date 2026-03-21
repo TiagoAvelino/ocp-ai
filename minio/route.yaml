@@ -1,0 +1,33 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: minio-api
+  namespace: minio
+  labels:
+    app: minio
+spec:
+  to:
+    kind: Service
+    name: minio-api
+  port:
+    targetPort: api
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: minio-console
+  namespace: minio
+  labels:
+    app: minio
+spec:
+  to:
+    kind: Service
+    name: minio-api
+  port:
+    targetPort: console
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

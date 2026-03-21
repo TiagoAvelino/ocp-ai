@@ -1,0 +1,121 @@
+---
+- name: Create NFD namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ nfd_namespace }}"
+        labels:
+          name: "{{ nfd_namespace }}"
+          openshift.io/cluster-monitoring: "true"
+
+- name: Create NFD OperatorGroup
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        name: "{{ nfd_operator_group_name }}"
+        namespace: "{{ nfd_namespace }}"
+      spec:
+        targetNamespaces:
+          - "{{ nfd_namespace }}"
+
+- name: Get NFD default channel from packagemanifest
+  kubernetes.core.k8s_info:
+    api_version: packages.operators.coreos.com/v1
+    kind: PackageManifest
+    name: "{{ nfd_package_manifest }}"
+    namespace: openshift-marketplace
+  register: nfd_pm
+
+- name: Set NFD channel and startingCSV
+  ansible.builtin.set_fact:
+    nfd_channel: "{{ nfd_pm.resources[0].status.defaultChannel }}"
+    nfd_starting_csv: >-
+      {{ nfd_pm.resources[0].status.channels
+         | selectattr('name', 'equalto', nfd_pm.resources[0].status.defaultChannel)
+         | map(attribute='currentCSV') | first }}
+
+- name: Display NFD channel and CSV
+  ansible.builtin.debug:
+    msg: "NFD channel={{ nfd_channel }}  startingCSV={{ nfd_starting_csv }}"
+
+- name: Create NFD Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ nfd_subscription_name }}"
+        namespace: "{{ nfd_namespace }}"
+      spec:
+        channel: "{{ nfd_channel }}"
+        installPlanApproval: Manual
+        name: "{{ nfd_package_manifest }}"
+        source: "{{ nfd_catalog_source }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ nfd_starting_csv }}"
+
+- name: Wait for NFD InstallPlan to be created
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    namespace: "{{ nfd_namespace }}"
+  register: nfd_installplans
+  until: nfd_installplans.resources | length > 0
+  retries: 30
+  delay: 5
+
+- name: Approve NFD InstallPlan
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ nfd_installplans.resources[0].metadata.name }}"
+        namespace: "{{ nfd_namespace }}"
+      spec:
+        approved: true
+  when: not (nfd_installplans.resources[0].spec.approved | default(false))
+
+- name: Wait for NFD CSV to succeed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ nfd_namespace }}"
+    name: "{{ nfd_starting_csv }}"
+  register: nfd_csv
+  until:
+    - nfd_csv.resources | length > 0
+    - nfd_csv.resources[0].status.phase | default('') == 'Succeeded'
+  retries: 60
+  delay: 10
+
+- name: Apply NodeFeatureDiscovery CR
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../nfd-operator/nfd-instance.yaml"
+
+- name: Wait for NFD pods to be running
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ nfd_namespace }}"
+    label_selectors:
+      - app=nfd-master
+    field_selectors:
+      - status.phase=Running
+  register: nfd_pods
+  until: nfd_pods.resources | length > 0
+  retries: "{{ (nfd_pods_timeout | int / 10) | int }}"
+  delay: 10
+
+- name: NFD Operator is ready
+  ansible.builtin.debug:
+    msg: "NFD Operator installed and NodeFeatureDiscovery CR applied successfully."

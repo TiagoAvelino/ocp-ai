@@ -1,0 +1,115 @@
+---
+- name: Create NVIDIA GPU Operator namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ nvidia_namespace }}"
+
+- name: Enable namespace monitoring
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ nvidia_namespace }}"
+        labels:
+          openshift.io/cluster-monitoring: "true"
+
+- name: Create NVIDIA GPU OperatorGroup
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        name: "{{ nvidia_operator_group_name }}"
+        namespace: "{{ nvidia_namespace }}"
+      spec:
+        targetNamespaces:
+          - "{{ nvidia_namespace }}"
+
+- name: Get NVIDIA GPU default channel from packagemanifest
+  kubernetes.core.k8s_info:
+    api_version: packages.operators.coreos.com/v1
+    kind: PackageManifest
+    name: "{{ nvidia_package_manifest }}"
+    namespace: openshift-marketplace
+  register: nvidia_pm
+
+- name: Set NVIDIA channel and startingCSV
+  ansible.builtin.set_fact:
+    nvidia_channel: "{{ nvidia_pm.resources[0].status.defaultChannel }}"
+    nvidia_starting_csv: >-
+      {{ nvidia_pm.resources[0].status.channels
+         | selectattr('name', 'equalto', nvidia_pm.resources[0].status.defaultChannel)
+         | map(attribute='currentCSV') | first }}
+
+- name: Display NVIDIA channel and CSV
+  ansible.builtin.debug:
+    msg: "NVIDIA channel={{ nvidia_channel }}  startingCSV={{ nvidia_starting_csv }}"
+
+- name: Create NVIDIA GPU Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ nvidia_subscription_name }}"
+        namespace: "{{ nvidia_namespace }}"
+      spec:
+        channel: "{{ nvidia_channel }}"
+        installPlanApproval: Manual
+        name: "{{ nvidia_package_manifest }}"
+        source: "{{ nvidia_catalog_source }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ nvidia_starting_csv }}"
+
+- name: Wait for NVIDIA InstallPlan to be created
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    namespace: "{{ nvidia_namespace }}"
+  register: nvidia_installplans
+  until: nvidia_installplans.resources | length > 0
+  retries: 30
+  delay: 5
+
+- name: Approve NVIDIA InstallPlan
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ nvidia_installplans.resources[0].metadata.name }}"
+        namespace: "{{ nvidia_namespace }}"
+      spec:
+        approved: true
+  when: not (nvidia_installplans.resources[0].spec.approved | default(false))
+
+- name: Wait for NVIDIA GPU CSV to succeed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ nvidia_namespace }}"
+    name: "{{ nvidia_starting_csv }}"
+  register: nvidia_csv
+  until:
+    - nvidia_csv.resources | length > 0
+    - nvidia_csv.resources[0].status.phase | default('') == 'Succeeded'
+  retries: 60
+  delay: 10
+
+- name: Apply ClusterPolicy
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../nvidia-operator/cluster-policy.yaml"
+
+- name: NVIDIA GPU Operator is ready
+  ansible.builtin.debug:
+    msg: "NVIDIA GPU Operator installed and ClusterPolicy applied successfully."

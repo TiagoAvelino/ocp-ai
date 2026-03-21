@@ -1,0 +1,22 @@
+---
+- name: Verify oc CLI is available
+  ansible.builtin.command: oc version --client
+  changed_when: false
+
+- name: Verify logged in to OpenShift cluster
+  ansible.builtin.command: oc whoami
+  register: oc_user
+  changed_when: false
+
+- name: Show logged-in user
+  ansible.builtin.debug:
+    msg: "Logged in as: {{ oc_user.stdout }}"
+
+- name: Get cluster info
+  ansible.builtin.command: oc cluster-info
+  register: cluster_info
+  changed_when: false
+
+- name: Show cluster info
+  ansible.builtin.debug:
+    msg: "{{ cluster_info.stdout_lines[0] }}"

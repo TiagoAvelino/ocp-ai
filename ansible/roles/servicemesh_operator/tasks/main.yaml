@@ -1,0 +1,81 @@
+---
+- name: Get Service Mesh default channel from packagemanifest
+  kubernetes.core.k8s_info:
+    api_version: packages.operators.coreos.com/v1
+    kind: PackageManifest
+    name: "{{ servicemesh_package_manifest }}"
+    namespace: openshift-marketplace
+  register: servicemesh_pm
+
+- name: Set Service Mesh channel and startingCSV
+  ansible.builtin.set_fact:
+    servicemesh_channel: "{{ servicemesh_pm.resources[0].status.defaultChannel }}"
+    servicemesh_starting_csv: >-
+      {{ servicemesh_pm.resources[0].status.channels
+         | selectattr('name', 'equalto', servicemesh_pm.resources[0].status.defaultChannel)
+         | map(attribute='currentCSV') | first }}
+
+- name: Display Service Mesh channel and CSV
+  ansible.builtin.debug:
+    msg: "Service Mesh channel={{ servicemesh_channel }}  startingCSV={{ servicemesh_starting_csv }}"
+
+- name: Create Service Mesh Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ servicemesh_subscription_name }}"
+        namespace: "{{ servicemesh_namespace }}"
+      spec:
+        channel: "{{ servicemesh_channel }}"
+        installPlanApproval: Manual
+        name: "{{ servicemesh_package_manifest }}"
+        source: "{{ servicemesh_catalog_source }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ servicemesh_starting_csv }}"
+
+- name: Wait for Service Mesh InstallPlan to be created
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    namespace: "{{ servicemesh_namespace }}"
+    label_selectors:
+      - "operators.coreos.com/{{ servicemesh_package_manifest }}.{{ servicemesh_namespace }}"
+  register: servicemesh_installplans
+  until: servicemesh_installplans.resources | length > 0
+  retries: 30
+  delay: 5
+
+- name: Approve Service Mesh InstallPlan
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ servicemesh_installplans.resources[0].metadata.name }}"
+        namespace: "{{ servicemesh_namespace }}"
+      spec:
+        approved: true
+  when: not (servicemesh_installplans.resources[0].spec.approved | default(false))
+
+- name: Wait for Service Mesh CSV to succeed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ servicemesh_namespace }}"
+    name: "{{ servicemesh_starting_csv }}"
+  register: servicemesh_csv
+  until:
+    - servicemesh_csv.resources | length > 0
+    - servicemesh_csv.resources[0].status.phase | default('') == 'Succeeded'
+  retries: 60
+  delay: 10
+
+- name: Service Mesh Operator is ready
+  ansible.builtin.debug:
+    msg: >-
+      Service Mesh Operator installed successfully.
+      No ServiceMeshControlPlane created -- RHOAI will configure it automatically for KServe.

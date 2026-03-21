@@ -1,0 +1,60 @@
+---
+- name: Deploy GPU stack and OpenShift AI on OpenShift
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  pre_tasks:
+    - name: Display deployment plan
+      ansible.builtin.debug:
+        msg:
+          - "=== OpenShift AI Full Stack Deployment ==="
+          - "Step 1: Node Feature Discovery (NFD) Operator"
+          - "Step 2: NVIDIA GPU Operator"
+          - "Step 3: cert-manager Operator"
+          - "Step 4: Kueue Operator"
+          - "Step 5: Red Hat OpenShift Service Mesh Operator"
+          - "Step 6: Red Hat OpenShift Serverless Operator"
+          - "Step 7: MinIO Object Storage"
+          - "Step 8: Red Hat OpenShift AI"
+
+  roles:
+    - role: prerequisites
+      tags: [prerequisites]
+
+    - role: nfd_operator
+      tags: [nfd, operators]
+
+    - role: nvidia_gpu_operator
+      tags: [nvidia, operators]
+
+    - role: cert_manager
+      tags: [cert-manager, operators]
+
+    - role: kueue_operator
+      tags: [kueue, operators]
+
+    - role: servicemesh_operator
+      tags: [servicemesh, operators, kserve-deps]
+
+    - role: serverless_operator
+      tags: [serverless, operators, kserve-deps]
+
+    - role: minio
+      tags: [minio, storage]
+
+    - role: openshift_ai
+      tags: [rhoai, operators]
+
+  post_tasks:
+    - name: Deployment complete
+      ansible.builtin.debug:
+        msg:
+          - "=== Installation Complete ==="
+          - "Next steps:"
+          - "  1. Label GPU nodes:  oc label node <node> nvidia.com/gpu.present=true"
+          - "  2. Verify GPU nodes: oc get nodes -l nvidia.com/gpu.present=true"
+          - "  3. Verify ClusterPolicy: oc get clusterpolicy gpu-cluster-policy"
+          - "  4. Verify NFD: oc get nodefeaturediscovery -n {{ nfd_namespace }}"
+          - "  5. Enable OpenShift AI components by setting managementState to Managed"
+          - "  6. Access the OpenShift AI dashboard"

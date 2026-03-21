@@ -1,0 +1,142 @@
+---
+- name: Create Kueue Operator namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ kueue_namespace }}"
+        annotations:
+          openshift.io/description: "openshift-kueue-operator"
+          openshift.io/display-name: "openshift-kueue-operator"
+        labels:
+          openshift.io/cluster-monitoring: "true"
+
+- name: Create Kueue OperatorGroup
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        annotations:
+          olm.providedAPIs: Kueue.v1.kueue.openshift.io
+        name: "{{ kueue_operator_group_name }}"
+        namespace: "{{ kueue_namespace }}"
+      spec:
+        upgradeStrategy: Default
+
+- name: Get Kueue default channel from packagemanifest
+  kubernetes.core.k8s_info:
+    api_version: packages.operators.coreos.com/v1
+    kind: PackageManifest
+    name: "{{ kueue_package_manifest }}"
+    namespace: openshift-marketplace
+  register: kueue_pm
+
+- name: Set Kueue channel and startingCSV
+  ansible.builtin.set_fact:
+    kueue_channel: "{{ kueue_pm.resources[0].status.defaultChannel }}"
+    kueue_starting_csv: >-
+      {{ kueue_pm.resources[0].status.channels
+         | selectattr('name', 'equalto', kueue_pm.resources[0].status.defaultChannel)
+         | map(attribute='currentCSV') | first }}
+
+- name: Display Kueue channel and CSV
+  ansible.builtin.debug:
+    msg: "Kueue channel={{ kueue_channel }}  startingCSV={{ kueue_starting_csv }}"
+
+- name: Create Kueue Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        labels:
+          operators.coreos.com/kueue-operator.openshift-kueue-operator: ""
+        name: "{{ kueue_subscription_name }}"
+        namespace: "{{ kueue_namespace }}"
+      spec:
+        channel: "{{ kueue_channel }}"
+        installPlanApproval: Manual
+        name: "{{ kueue_package_manifest }}"
+        source: "{{ kueue_catalog_source }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ kueue_starting_csv }}"
+
+- name: Wait for Kueue InstallPlan to be created
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    namespace: "{{ kueue_namespace }}"
+  register: kueue_installplans
+  until: kueue_installplans.resources | length > 0
+  retries: 30
+  delay: 5
+
+- name: Approve Kueue InstallPlan
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ kueue_installplans.resources[0].metadata.name }}"
+        namespace: "{{ kueue_namespace }}"
+      spec:
+        approved: true
+  when: not (kueue_installplans.resources[0].spec.approved | default(false))
+
+- name: Wait for Kueue CSV to succeed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ kueue_namespace }}"
+    name: "{{ kueue_starting_csv }}"
+  register: kueue_csv
+  until:
+    - kueue_csv.resources | length > 0
+    - kueue_csv.resources[0].status.phase | default('') == 'Succeeded'
+  retries: 60
+  delay: 10
+
+- name: Apply Kueue CR with framework integrations
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../kueue-operator/kueue-instance.yaml"
+
+- name: Wait for Kueue controller pod to be running
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ kueue_namespace }}"
+    field_selectors:
+      - status.phase=Running
+  register: kueue_pods
+  until: kueue_pods.resources | length > 0
+  retries: 30
+  delay: 10
+
+- name: Apply kueue-system project and KueueViz components
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../kueue-operator/kueue-system.yaml"
+
+- name: Wait for KueueViz pods to be running
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: kueue-kueueviz-backend
+    namespace: kueue-system
+  register: kueueviz_deploy
+  until:
+    - kueueviz_deploy.resources | length > 0
+    - (kueueviz_deploy.resources[0].status.readyReplicas | default(0)) >= 1
+  retries: 30
+  delay: 10
+
+- name: Kueue Operator is ready
+  ansible.builtin.debug:
+    msg: "Kueue Operator installed with RayJob/RayCluster integrations and KueueViz deployed."

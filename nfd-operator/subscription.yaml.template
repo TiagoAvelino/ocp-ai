@@ -1,0 +1,12 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: nfd
+  namespace: openshift-nfd
+spec:
+  channel: <CHANNEL>  # Will be replaced with actual channel at runtime
+  installPlanApproval: Manual
+  name: nfd
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  startingCSV: <STARTING_CSV>  # Will be replaced with actual CSV at runtime

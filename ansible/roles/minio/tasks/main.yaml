@@ -1,0 +1,70 @@
+---
+- name: Create MinIO namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ minio_namespace }}"
+
+- name: Create MinIO credentials secret
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../minio/secret.yaml"
+
+- name: Create MinIO PVC
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../minio/pvc.yaml"
+
+- name: Create MinIO Deployment
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../minio/deployment.yaml"
+
+- name: Create MinIO Service
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../minio/service.yaml"
+
+- name: Create MinIO Routes
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../minio/route.yaml"
+
+- name: Wait for MinIO Deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: minio
+    namespace: "{{ minio_namespace }}"
+  register: minio_deploy
+  until:
+    - minio_deploy.resources | length > 0
+    - (minio_deploy.resources[0].status.readyReplicas | default(0)) >= 1
+  retries: "{{ (minio_ready_timeout | int / 10) | int }}"
+  delay: 10
+
+- name: Get MinIO API route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    name: minio-api
+    namespace: "{{ minio_namespace }}"
+  register: minio_api_route
+
+- name: Get MinIO Console route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    name: minio-console
+    namespace: "{{ minio_namespace }}"
+  register: minio_console_route
+
+- name: Display MinIO endpoints
+  ansible.builtin.debug:
+    msg:
+      - "MinIO is ready!"
+      - "API endpoint:  https://{{ minio_api_route.resources[0].spec.host | default('N/A') }}"
+      - "Console:       https://{{ minio_console_route.resources[0].spec.host | default('N/A') }}"

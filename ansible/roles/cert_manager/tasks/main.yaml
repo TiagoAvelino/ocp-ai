@@ -1,0 +1,101 @@
+---
+- name: Create cert-manager-operator namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ certmanager_namespace }}"
+        labels:
+          openshift.io/cluster-monitoring: "true"
+
+- name: Create cert-manager OperatorGroup
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        name: "{{ certmanager_operator_group_name }}"
+        namespace: "{{ certmanager_namespace }}"
+      spec:
+        targetNamespaces:
+          - "{{ certmanager_namespace }}"
+
+- name: Get cert-manager default channel from packagemanifest
+  kubernetes.core.k8s_info:
+    api_version: packages.operators.coreos.com/v1
+    kind: PackageManifest
+    name: "{{ certmanager_package_manifest }}"
+    namespace: openshift-marketplace
+  register: certmanager_pm
+
+- name: Set cert-manager channel and startingCSV
+  ansible.builtin.set_fact:
+    certmanager_channel: "{{ certmanager_pm.resources[0].status.defaultChannel }}"
+    certmanager_starting_csv: >-
+      {{ certmanager_pm.resources[0].status.channels
+         | selectattr('name', 'equalto', certmanager_pm.resources[0].status.defaultChannel)
+         | map(attribute='currentCSV') | first }}
+
+- name: Display cert-manager channel and CSV
+  ansible.builtin.debug:
+    msg: "cert-manager channel={{ certmanager_channel }}  startingCSV={{ certmanager_starting_csv }}"
+
+- name: Create cert-manager Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ certmanager_subscription_name }}"
+        namespace: "{{ certmanager_namespace }}"
+      spec:
+        channel: "{{ certmanager_channel }}"
+        installPlanApproval: Manual
+        name: "{{ certmanager_package_manifest }}"
+        source: "{{ certmanager_catalog_source }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ certmanager_starting_csv }}"
+
+- name: Wait for cert-manager InstallPlan to be created
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    namespace: "{{ certmanager_namespace }}"
+  register: certmanager_installplans
+  until: certmanager_installplans.resources | length > 0
+  retries: 30
+  delay: 5
+
+- name: Approve cert-manager InstallPlan
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ certmanager_installplans.resources[0].metadata.name }}"
+        namespace: "{{ certmanager_namespace }}"
+      spec:
+        approved: true
+  when: not (certmanager_installplans.resources[0].spec.approved | default(false))
+
+- name: Wait for cert-manager CSV to succeed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ certmanager_namespace }}"
+    name: "{{ certmanager_starting_csv }}"
+  register: certmanager_csv
+  until:
+    - certmanager_csv.resources | length > 0
+    - certmanager_csv.resources[0].status.phase | default('') == 'Succeeded'
+  retries: 60
+  delay: 10
+
+- name: cert-manager Operator is ready
+  ansible.builtin.debug:
+    msg: "cert-manager Operator installed successfully."
