@@ -1,275 +1,155 @@
 # OpenShift AI Full Stack Deployment
 
-Automated deployment of the complete GPU + AI stack on Red Hat OpenShift, including all operator prerequisites and supporting infrastructure.
+Automated deployment of a complete GPU + AI stack on Red Hat OpenShift. This repository installs the prerequisites, infrastructure, and OpenShift AI components required for GPU-enabled model training and inference.
+
+## What is included
+
+The main Ansible playbook in `ansible/playbook.yaml` deploys:
+
+- Node Feature Discovery (NFD)
+- NVIDIA GPU Operator
+- cert-manager Operator
+- Kueue Operator
+- MinIO object storage
+- Red Hat OpenShift AI (DataScienceCluster)
+
+The repository also includes manifest templates and role definitions so you can install the full stack or just the components you need.
 
 ## Prerequisites
 
-- Access to an OpenShift cluster with **cluster administrator** privileges
-- OpenShift CLI (`oc`) installed and authenticated (`oc login`)
-- Python 3 with `pip`
-- Cluster nodes with NVIDIA GPUs (for GPU workloads)
+- OpenShift cluster access with **cluster-admin** privileges
+- `oc` CLI installed and authenticated
+- Python 3 and `pip`
+- NVIDIA GPU nodes for GPU workloads and OpenShift AI GPU training
 
-## Components
-
-The deployment installs the following components in order:
-
-| Step | Component                        | Purpose                                                     |
-| ---- | -------------------------------- | ----------------------------------------------------------- |
-| 1    | **Node Feature Discovery (NFD)** | Detects hardware features on nodes (GPU labels)             |
-| 2    | **NVIDIA GPU Operator**          | Manages GPU drivers, device plugin, DCGM, toolkit           |
-| 3    | **cert-manager Operator**        | TLS certificate management (required by Kueue)              |
-| 4    | **Kueue Operator**               | Job queueing with Ray/PyTorch/batch integrations            |
-| 5    | **MinIO**                        | S3-compatible object storage for pipelines and models       |
-| 6    | **Red Hat OpenShift AI**         | AI/ML platform (dashboard, workbenches, pipelines, serving) |
-
-### DataScienceCluster Components
-
-The following OpenShift AI components are enabled (`Managed`) in the DSC:
-
-| Component           | Status  | Notes                                                    |
-| ------------------- | ------- | -------------------------------------------------------- |
-| Dashboard           | Managed | Web UI for AI/ML workflows                               |
-| Workbenches         | Managed | Jupyter notebooks in `rhods-notebooks`                   |
-| Model Registry      | Managed | Model versioning in `rhoai-model-registries`             |
-| AI Pipelines        | Managed | Kubeflow Pipelines 2.0 with Argo controllers             |
-| KServe              | Managed | Single-model serving (requires ServiceMesh + Serverless) |
-| Ray                 | Managed | Distributed computing (uses standalone Kueue)            |
-| Kueue (embedded)    | Removed | Deprecated; replaced by standalone Kueue Operator        |
-| Training Operator   | Removed |                                                          |
-| Feast Operator      | Removed |                                                          |
-| TrustyAI            | Removed |                                                          |
-| LlamaStack Operator | Removed |                                                          |
-
-> **Note:** KServe requires **Red Hat OpenShift Service Mesh** and **Red Hat OpenShift Serverless** operators, which are not yet included in this automation. Either add them manually or set `kserve.managementState: Removed` if not needed.
-
-## Project Structure
-
-```
-ocp-ai/
-├── ansible/                             # Ansible automation (recommended)
-│   ├── playbook.yaml                    # Main playbook
-│   ├── requirements.yaml                # Ansible collection dependencies
-│   ├── group_vars/
-│   │   └── all.yaml                     # Variables for all roles
-│   └── roles/
-│       ├── prerequisites/tasks/main.yaml
-│       ├── nfd_operator/tasks/main.yaml
-│       ├── nvidia_gpu_operator/tasks/main.yaml
-│       ├── cert_manager/tasks/main.yaml
-│       ├── kueue_operator/tasks/main.yaml
-│       ├── minio/tasks/main.yaml
-│       └── openshift_ai/tasks/main.yaml
-│
-├── nfd-operator/                        # NFD manifests
-│   ├── namespace.yaml
-│   ├── operatorgroup.yaml
-│   ├── subscription.yaml.template
-│   └── nfd-instance.yaml
-│
-├── nvidia-operator/                     # NVIDIA GPU Operator manifests
-│   ├── namespace.yaml
-│   ├── operatorgroup.yaml
-│   ├── subscription.yaml.template
-│   └── cluster-policy.yaml
-│
-├── cert-manager/                        # cert-manager Operator manifests
-│   ├── namespace.yaml
-│   └── operatorgroup.yaml
-│
-├── kueue-operator/                      # Kueue Operator manifests
-│   ├── namespace.yaml
-│   ├── operatorgroup.yaml
-│   ├── subscription.yaml.template
-│   ├── kueue-instance.yaml              # Kueue CR with framework integrations
-│   └── kueue-system.yaml               # KueueViz project + RBAC
-│
-├── minio/                               # MinIO object storage manifests
-│   ├── namespace.yaml
-│   ├── secret.yaml
-│   ├── pvc.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── route.yaml
-│
-├── openshift-ai/                        # OpenShift AI manifests
-│   ├── namespace-operator.yaml
-│   ├── namespace-applications.yaml
-│   ├── namespace-notebooks.yaml
-│   ├── operatorgroup.yaml
-│   ├── subscription.yaml.template
-│   ├── datasciencecluster.yaml
-│   └── secrets/
-│       └── minio-s3-connection.yaml     # MinIO S3 connection for data science projects
-│
-├── install-nvidia-gpu-operator.sh       # Legacy shell script
-└── README.md
-```
-
-## Installation with Ansible
-
-### 1. Install dependencies
+## Quick start
 
 ```bash
+cd /home/tavelino/ocp-ai
 pip install ansible kubernetes openshift
 ansible-galaxy collection install -r ansible/requirements.yaml
-```
-
-### 2. Log in to your OpenShift cluster
-
-```bash
 oc login --server=https://api.your-cluster.example.com:6443 -u kubeadmin
-```
-
-### 3. Run the playbook
-
-```bash
 ansible-playbook ansible/playbook.yaml
 ```
 
-### Run specific steps with tags
+## Deploy only MinIO
 
-Each role has a tag for selective execution:
+If you want to install only MinIO, run:
 
 ```bash
-# Install only MinIO
+cd /home/tavelino/ocp-ai
 ansible-playbook ansible/playbook.yaml --tags minio
+```
 
-# Install cert-manager and Kueue together
+## Selective deployment by tag
+
+Use tags to install or skip specific roles:
+
+```bash
+ansible-playbook ansible/playbook.yaml --tags minio
 ansible-playbook ansible/playbook.yaml --tags cert-manager,kueue
-
-# Install everything except GPU operators
 ansible-playbook ansible/playbook.yaml --skip-tags nfd,nvidia
-
-# Run only OpenShift AI
 ansible-playbook ansible/playbook.yaml --tags rhoai
 ```
 
-Available tags: `prerequisites`, `nfd`, `nvidia`, `cert-manager`, `kueue`, `minio`, `rhoai`, `operators`, `storage`
+Supported tags:
+`prerequisites`, `nfd`, `nvidia`, `cert-manager`, `kueue`, `minio`, `rhoai`, `operators`, `storage`
 
-### Dry run and debugging
+## Project structure
 
-```bash
-# Preview changes without applying
-ansible-playbook ansible/playbook.yaml --check
-
-# Verbose output
-ansible-playbook ansible/playbook.yaml -v
-
-# List all tasks
-ansible-playbook ansible/playbook.yaml --list-tasks
+```
+ocp-ai/
+├── ansible/                             # Ansible automation
+│   ├── playbook.yaml                    # Main playbook
+│   ├── requirements.yaml                # Ansible collections
+│   ├── group_vars/                      # Deployment variables
+│   │   └── all.yaml
+│   └── roles/                           # Role definitions
+├── cert-manager/                        # cert-manager manifests
+├── kueue-operator/                      # Kueue manifests
+├── minio/                               # MinIO manifests
+├── nfd-operator/                        # NFD manifests
+├── nvidia-operator/                     # NVIDIA GPU Operator manifests
+├── openshift-ai/                        # OpenShift AI manifests and secrets
+├── serverless-operator/                 # Serverless manifests
+├── servicemesh-operator/                # Service Mesh manifests
+└── README.md
 ```
 
 ## Configuration
 
-All variables are defined in `ansible/group_vars/all.yaml`:
+Review `ansible/group_vars/all.yaml` to customize deployment variables.
 
-| Variable                   | Default                    | Description                         |
-| -------------------------- | -------------------------- | ----------------------------------- |
-| `nfd_namespace`            | `openshift-nfd`            | NFD operator namespace              |
-| `nvidia_namespace`         | `nvidia-gpu-operator`      | NVIDIA operator namespace           |
-| `certmanager_namespace`    | `cert-manager-operator`    | cert-manager namespace              |
-| `kueue_namespace`          | `openshift-kueue-operator` | Kueue operator namespace            |
-| `minio_namespace`          | `minio`                    | MinIO namespace                     |
-| `rhoai_operator_namespace` | `redhat-ods-operator`      | OpenShift AI operator namespace     |
-| `operator_install_timeout` | `600`                      | Seconds to wait for operator CSV    |
-| `minio_ready_timeout`      | `300`                      | Seconds to wait for MinIO readiness |
+Key variables include:
 
-## Verification
+| Variable                   | Default                    | Purpose                                 |
+|----------------------------|----------------------------|-----------------------------------------|
+| `nfd_namespace`            | `openshift-nfd`            | NFD operator namespace                  |
+| `nvidia_namespace`         | `nvidia-gpu-operator`      | NVIDIA operator namespace               |
+| `certmanager_namespace`    | `cert-manager-operator`    | cert-manager namespace                  |
+| `kueue_namespace`          | `openshift-kueue-operator` | Kueue operator namespace                |
+| `minio_namespace`          | `minio`                    | MinIO namespace                         |
+| `rhoai_operator_namespace` | `redhat-ods-operator`      | OpenShift AI operator namespace         |
+| `operator_install_timeout` | `600`                      | CSV install timeout (seconds)           |
+| `minio_ready_timeout`      | `300`                      | MinIO readiness timeout (seconds)       |
 
-After installation, verify the stack:
+## Verify deployment
 
 ```bash
-# NFD
-oc get nodefeaturediscovery -n openshift-nfd
 oc get pods -n openshift-nfd
-
-# NVIDIA GPU Operator
 oc get clusterpolicy gpu-cluster-policy
 oc get pods -n nvidia-gpu-operator
-
-# cert-manager
 oc get csv -n cert-manager-operator
 oc get pods -n cert-manager
-
-# Kueue
-oc get kueue cluster -n openshift-kueue-operator
 oc get pods -n openshift-kueue-operator
 oc get pods -n kueue-system
-
-# MinIO
 oc get deployment minio -n minio
 oc get routes -n minio
-
-# OpenShift AI
 oc get datasciencecluster default-dsc
 oc get pods -n redhat-ods-operator
 oc get pods -n redhat-ods-applications
 ```
 
-## Post-Installation
+## Post-installation steps
 
-1. **Label GPU nodes** (if not auto-detected):
+Label GPU-capable nodes:
 
-   ```bash
-   oc label node <node-name> nvidia.com/gpu.present=true
-   ```
+```bash
+oc label node <node-name> nvidia.com/gpu.present=true
+```
 
-2. **Taint GPU nodes** (recommended for Kueue scheduling):
+Find the MinIO console route:
 
-   ```bash
-   oc adm taint nodes <gpu-node> nvidia.com/gpu=Exists:NoSchedule
-   ```
+```bash
+oc get route minio-console -n minio -o jsonpath='{.spec.host}'
+```
 
-3. **Access MinIO Console** -- get the route URL:
+Check and configure the OpenShift AI MinIO connection secret in:
 
-   ```bash
-   oc get route minio-console -n minio -o jsonpath='{.spec.host}'
-   ```
-
-   Login with `admin` / `123456`.
-
-4. **Access OpenShift AI Dashboard**:
-
-   ```bash
-   oc get route -n redhat-ods-applications -l app=rhods-dashboard
-   ```
-
-5. **Update the MinIO S3 connection secret** in `openshift-ai/secrets/minio-s3-connection.yaml` with your actual credentials before using pipelines.
+- `openshift-ai/secrets/minio-s3-connection.yaml`
 
 ## Troubleshooting
 
-### Multiple OperatorGroups in namespace
-
-```
-csv created in namespace with multiple operatorgroups, can't pick one automatically
-```
-
-List and remove the extra OperatorGroup:
-
-```bash
-oc get operatorgroup -n <namespace>
-oc delete operatorgroup <extra-name> -n <namespace>
-```
-
-### OwnNamespace InstallModeType not supported
-
-The OpenShift AI Operator requires AllNamespaces mode. Its OperatorGroup uses `spec: {}` (no `targetNamespaces`).
-
-### Operator CSV stuck in Pending
-
-Check if the InstallPlan needs approval:
+### InstallPlan pending
 
 ```bash
 oc get installplan -n <namespace>
 oc patch installplan <name> -n <namespace> --type merge -p '{"spec":{"approved":true}}'
 ```
 
-The Ansible playbook approves InstallPlans automatically.
+### Duplicate OperatorGroup
 
-## Additional Resources
+If you see an error about multiple OperatorGroups:
+
+```bash
+oc get operatorgroup -n <namespace>
+oc delete operatorgroup <extra-name> -n <namespace>
+```
+
+## Resources
 
 - [Red Hat OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/)
 - [NVIDIA GPU Operator Documentation](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/)
 - [Red Hat build of Kueue Documentation](https://docs.redhat.com/en/documentation/red_hat_build_of_kueue/1.0)
-- [Node Feature Discovery Operator](https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/specialized_hardware_and_driver_enablement/node-feature-discovery-operator)
-- [OpenShift cert-manager Operator](https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/security_and_compliance/cert-manager-operator-for-red-hat-openshift)
+- [OpenShift NFD Operator Documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/specialized_hardware_and_driver_enablement/node-feature-discovery-operator)
+- [OpenShift cert-manager Operator Documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/security_and_compliance/cert-manager-operator-for-red-hat-openshift)
