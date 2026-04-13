@@ -1,0 +1,34 @@
+apiVersion: v1
+baseDomain: {{ base_domain }}
+metadata:
+  name: {{ cluster_name }}
+compute:
+- name: worker
+  replicas: {{ compute_replicas }}
+  platform:
+    aws:
+      type: {{ compute_instance_type }}
+      zones:
+{% for zone in compute_zones %}
+      - {{ zone }}
+{% endfor %}
+
+controlPlane:
+  name: master
+  replicas: {{ control_plane_replicas }}
+  platform:
+    aws:
+      type: {{ control_plane_instance_type }}
+      zones:
+{% for zone in control_plane_zones %}
+      - {{ zone }}
+{% endfor %}
+
+platform:
+  aws:
+    region: {{ aws_region }}
+    userTags:
+      adminContact: {{ admin_contact }}
+      costCenter: "{{ cost_center }}"
+pullSecret: '{{ pull_secret }}'
+sshKey: {{ ssh_key }}

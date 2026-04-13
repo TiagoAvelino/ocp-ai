@@ -1,0 +1,54 @@
+---
+- name: Get Service Mesh 3.x default channel from packagemanifest
+  kubernetes.core.k8s_info:
+    api_version: packages.operators.coreos.com/v1
+    kind: PackageManifest
+    name: "{{ servicemesh3_package_manifest }}"
+    namespace: openshift-marketplace
+  register: servicemesh3_pm
+
+- name: Set Service Mesh 3.x channel and startingCSV
+  ansible.builtin.set_fact:
+    servicemesh3_channel: "{{ servicemesh3_pm.resources[0].status.defaultChannel }}"
+    servicemesh3_starting_csv: >-
+      {{ servicemesh3_pm.resources[0].status.channels
+         | selectattr('name', 'equalto', servicemesh3_pm.resources[0].status.defaultChannel)
+         | map(attribute='currentCSV') | first }}
+
+- name: Display Service Mesh 3.x channel and CSV
+  ansible.builtin.debug:
+    msg: "Service Mesh 3.x channel={{ servicemesh3_channel }}  startingCSV={{ servicemesh3_starting_csv }}"
+
+- name: Create Service Mesh 3.x Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ servicemesh3_subscription_name }}"
+        namespace: "{{ servicemesh3_namespace }}"
+      spec:
+        channel: "{{ servicemesh3_channel }}"
+        installPlanApproval: Automatic
+        name: "{{ servicemesh3_package_manifest }}"
+        source: "{{ servicemesh3_catalog_source }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ servicemesh3_starting_csv }}"
+
+- name: Wait for Service Mesh 3.x CSV to succeed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ servicemesh3_namespace }}"
+    name: "{{ servicemesh3_starting_csv }}"
+  register: servicemesh3_csv
+  until:
+    - servicemesh3_csv.resources | length > 0
+    - servicemesh3_csv.resources[0].status.phase | default('') == 'Succeeded'
+  retries: 60
+  delay: 10
+
+- name: Service Mesh 3.x Operator is ready
+  ansible.builtin.debug:
+    msg: "Service Mesh 3.x Operator installed successfully ({{ servicemesh3_starting_csv }})."

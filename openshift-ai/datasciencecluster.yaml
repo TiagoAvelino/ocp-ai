@@ -1,4 +1,4 @@
-apiVersion: datasciencecluster.opendatahub.io/v1
+apiVersion: datasciencecluster.opendatahub.io/v2
 kind: DataScienceCluster
 metadata:
   name: default-dsc
@@ -17,8 +17,6 @@ spec:
 
     aipipelines:
       managementState: Managed
-      argoWorkflowsControllers:
-        managementState: Managed
 
     kserve:
       managementState: Managed
@@ -49,4 +47,4 @@ spec:
       managementState: Removed
 
     llamastackoperator:
-      managementState: Removed
+      managementState: Managed

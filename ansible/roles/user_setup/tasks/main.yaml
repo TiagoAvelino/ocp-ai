@@ -1,0 +1,97 @@
+---
+- name: Create htpasswd secret from users file
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: htpasswd-secret
+        namespace: openshift-config
+      type: Opaque
+      data:
+        htpasswd: "{{ lookup('file', playbook_dir + '/../users.htpasswd') | b64encode }}"
+
+- name: Configure HTPasswd identity provider on OAuth
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: config.openshift.io/v1
+      kind: OAuth
+      metadata:
+        name: cluster
+      spec:
+        identityProviders:
+          - name: htpasswd_provider
+            mappingMethod: claim
+            type: HTPasswd
+            htpasswd:
+              fileData:
+                name: htpasswd-secret
+
+- name: Grant cluster-admin to aiadmin user
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: aiadmin-cluster-admin
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: cluster-admin
+      subjects:
+        - apiGroup: rbac.authorization.k8s.io
+          kind: User
+          name: aiadmin
+
+- name: Create OpenShift AI admin group
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: rhods-admins
+      users:
+        - aiadmin
+
+- name: Grant OpenShift AI admin permissions to rhods-admins group
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: rhods-admins-binding
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: admin
+      subjects:
+        - apiGroup: rbac.authorization.k8s.io
+          kind: Group
+          name: rhods-admins
+
+- name: Add rhods-admins as OpenShift AI admin group in OdhDashboardConfig
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: opendatahub.io/v1alpha
+      kind: OdhDashboardConfig
+      metadata:
+        name: odh-dashboard-config
+        namespace: "{{ rhoai_applications_namespace }}"
+      spec:
+        groupsConfig:
+          adminGroups: "rhods-admins"
+  ignore_errors: true
+
+- name: User setup complete
+  ansible.builtin.debug:
+    msg:
+      - "User 'aiadmin' configured:"
+      - "  - HTPasswd identity provider created"
+      - "  - cluster-admin role granted"
+      - "  - Added to 'rhods-admins' group (OpenShift AI admin)"

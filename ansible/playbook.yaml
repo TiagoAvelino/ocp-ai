@@ -9,18 +9,28 @@
       ansible.builtin.debug:
         msg:
           - "=== OpenShift AI Full Stack Deployment ==="
-          - "Step 1: Node Feature Discovery (NFD) Operator"
-          - "Step 2: NVIDIA GPU Operator"
-          - "Step 3: cert-manager Operator"
-          - "Step 4: Kueue Operator"
-          - "Step 5: Red Hat OpenShift Service Mesh Operator"
+          - "Step 0: Create OpenShift Cluster (AWS)"
+          - "Step 1: User Setup (HTPasswd, cluster-admin, RHOAI admin)"
+          - "Step 2: Node Feature Discovery (NFD) Operator"
+          - "Step 3: NVIDIA GPU Operator"
+          - "Step 4: cert-manager Operator"
+          - "Step 5: Kueue Operator"
           - "Step 6: Red Hat OpenShift Serverless Operator"
-          - "Step 7: MinIO Object Storage"
-          - "Step 8: Red Hat OpenShift AI"
+          - "Step 7: Red Hat OpenShift Service Mesh 3.x Operator"
+          - "Step 8: MinIO Object Storage"
+          - "Step 9: Red Hat OpenShift AI (with llamastackoperator Managed)"
+          - "Step 10: NVIDIA L4 Hardware Profile"
+          - "Step 11: Workbench Setup"
 
   roles:
+    - role: openshift_cluster_installation
+      tags: [cluster, installation]
+
     - role: prerequisites
       tags: [prerequisites]
+
+    - role: user_setup
+      tags: [users, auth]
 
     - role: nfd_operator
       tags: [nfd, operators]
@@ -34,17 +44,23 @@
     - role: kueue_operator
       tags: [kueue, operators]
 
-    - role: servicemesh_operator
-      tags: [servicemesh, operators, kserve-deps]
-
     - role: serverless_operator
       tags: [serverless, operators, kserve-deps]
+
+    - role: servicemesh3_operator
+      tags: [servicemesh3, operators, kserve-deps, genai-deps]
 
     - role: minio
       tags: [minio, storage]
 
     - role: openshift_ai
       tags: [rhoai, operators]
+
+    - role: hardware_profile
+      tags: [hardware-profile, rhoai]
+
+    - role: workbench
+      tags: [workbench, project]
 
   post_tasks:
     - name: Deployment complete

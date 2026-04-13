@@ -1,0 +1,279 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "7"
+    ols.openshift.io/olsconfig-configmap-version: "1498411"
+  creationTimestamp: "2026-04-06T18:38:08Z"
+  generation: 7
+  labels:
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/managed-by: lightspeed-operator
+    app.kubernetes.io/name: lightspeed-service-api
+    app.kubernetes.io/part-of: openshift-lightspeed
+  name: lightspeed-app-server
+  namespace: openshift-lightspeed
+  ownerReferences:
+  - apiVersion: ols.openshift.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: OLSConfig
+    name: cluster
+    uid: 311419f2-29bb-4bf0-93a0-74e8efb64dda
+  resourceVersion: "1543563"
+  uid: c3ab7697-3dfd-448c-ac11-9a487ca65665
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: application-server
+      app.kubernetes.io/managed-by: lightspeed-operator
+      app.kubernetes.io/name: lightspeed-service-api
+      app.kubernetes.io/part-of: openshift-lightspeed
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        ols.openshift.io/force-reload: "2026-04-07T18:17:35.803240456Z"
+      creationTimestamp: null
+      labels:
+        app.kubernetes.io/component: application-server
+        app.kubernetes.io/managed-by: lightspeed-operator
+        app.kubernetes.io/name: lightspeed-service-api
+        app.kubernetes.io/part-of: openshift-lightspeed
+    spec:
+      containers:
+      - env:
+        - name: OLS_CONFIG_FILE
+          value: /etc/ols/olsconfig.yaml
+        image: registry.redhat.io/openshift-lightspeed/lightspeed-service-api-rhel9@sha256:6e2890a7774b5040e2c078b1255a945cedb0b4da9145007a30e2b56fd2daaff5
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 15
+          httpGet:
+            path: /liveness
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 30
+        name: lightspeed-service-api
+        ports:
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 15
+          httpGet:
+            path: /readiness
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 30
+        resources:
+          limits:
+            memory: 4Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/apikeys/rhoai-api-keys
+          name: secret-rhoai-api-keys
+          readOnly: true
+        - mountPath: /etc/credentials/lightspeed-postgres-secret
+          name: secret-lightspeed-postgres-secret
+          readOnly: true
+        - mountPath: /etc/certs/lightspeed-tls
+          name: secret-lightspeed-tls
+          readOnly: true
+        - mountPath: /etc/ols
+          name: cm-olsconfig
+          readOnly: true
+        - mountPath: /app-root/ols-user-data
+          name: ols-user-data
+        - mountPath: /etc/config
+          name: exporter-config
+          readOnly: true
+        - mountPath: /etc/certs/ols-additional-ca
+          name: openshift-ca
+          readOnly: true
+        - mountPath: /etc/certs/cert-bundle
+          name: cert-bundle
+        - mountPath: /etc/certs/postgres-ca
+          name: cm-olspostgresca
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp-writable-volume
+      - args:
+        - --mode
+        - openshift
+        - --config
+        - /etc/config/config.yaml
+        - --log-level
+        - INFO
+        - --data-dir
+        - /app-root/ols-user-data
+        image: registry.redhat.io/openshift-lightspeed/lightspeed-to-dataverse-exporter-rhel9@sha256:ec8162a742e6c306c35790f45db23be9b9d12f86ea7555be671ae30832efa04f
+        imagePullPolicy: Always
+        name: lightspeed-to-dataverse-exporter
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/apikeys/rhoai-api-keys
+          name: secret-rhoai-api-keys
+          readOnly: true
+        - mountPath: /etc/credentials/lightspeed-postgres-secret
+          name: secret-lightspeed-postgres-secret
+          readOnly: true
+        - mountPath: /etc/certs/lightspeed-tls
+          name: secret-lightspeed-tls
+          readOnly: true
+        - mountPath: /etc/ols
+          name: cm-olsconfig
+          readOnly: true
+        - mountPath: /app-root/ols-user-data
+          name: ols-user-data
+        - mountPath: /etc/config
+          name: exporter-config
+          readOnly: true
+        - mountPath: /etc/certs/ols-additional-ca
+          name: openshift-ca
+          readOnly: true
+        - mountPath: /etc/certs/cert-bundle
+          name: cert-bundle
+        - mountPath: /etc/certs/postgres-ca
+          name: cm-olspostgresca
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp-writable-volume
+      - command:
+        - /openshift-mcp-server
+        - --read-only
+        - --port
+        - "8080"
+        image: registry.redhat.io/openshift-lightspeed/openshift-mcp-server-rhel9@sha256:9e919d8dbe93d1234c2c1a246a3e011af3a8014f0f54429c640422ec30a32888
+        imagePullPolicy: IfNotPresent
+        name: openshift-mcp-server
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/apikeys/rhoai-api-keys
+          name: secret-rhoai-api-keys
+          readOnly: true
+        - mountPath: /etc/credentials/lightspeed-postgres-secret
+          name: secret-lightspeed-postgres-secret
+          readOnly: true
+        - mountPath: /etc/certs/lightspeed-tls
+          name: secret-lightspeed-tls
+          readOnly: true
+        - mountPath: /etc/ols
+          name: cm-olsconfig
+          readOnly: true
+        - mountPath: /app-root/ols-user-data
+          name: ols-user-data
+        - mountPath: /etc/config
+          name: exporter-config
+          readOnly: true
+        - mountPath: /etc/certs/ols-additional-ca
+          name: openshift-ca
+          readOnly: true
+        - mountPath: /etc/certs/cert-bundle
+          name: cert-bundle
+        - mountPath: /etc/certs/postgres-ca
+          name: cm-olspostgresca
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp-writable-volume
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: lightspeed-app-server
+      serviceAccountName: lightspeed-app-server
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: secret-rhoai-api-keys
+        secret:
+          defaultMode: 420
+          secretName: rhoai-api-keys
+      - name: secret-lightspeed-postgres-secret
+        secret:
+          defaultMode: 420
+          secretName: lightspeed-postgres-secret
+      - name: secret-lightspeed-tls
+        secret:
+          defaultMode: 420
+          secretName: lightspeed-tls
+      - configMap:
+          defaultMode: 420
+          name: olsconfig
+        name: cm-olsconfig
+      - emptyDir: {}
+        name: ols-user-data
+      - configMap:
+          defaultMode: 420
+          name: lightspeed-exporter-config
+        name: exporter-config
+      - configMap:
+          defaultMode: 420
+          name: kube-root-ca.crt
+        name: openshift-ca
+      - emptyDir: {}
+        name: cert-bundle
+      - configMap:
+          defaultMode: 420
+          name: openshift-service-ca.crt
+        name: cm-olspostgresca
+      - emptyDir: {}
+        name: tmp-writable-volume
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2026-04-06T19:17:48Z"
+    lastUpdateTime: "2026-04-07T18:18:15Z"
+    message: ReplicaSet "lightspeed-app-server-8594576f6" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2026-04-07T19:22:00Z"
+    lastUpdateTime: "2026-04-07T19:22:00Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 7
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1

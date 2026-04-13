@@ -1,0 +1,28 @@
+apiVersion: milvus.io/v1beta1
+kind: Milvus
+metadata:
+  name: milvus-service
+  namespace: milvus
+spec:
+  mode: standalone
+  components:
+    standalone:
+      serviceType: ClusterIP
+  dependencies:
+    msgStreamType: rocksmq
+    etcd:
+      inCluster:
+        deletionPolicy: Delete
+        pvcDeletion: false
+        values:
+          persistence:
+            enabled: true
+            size: 10Gi
+    storage:
+      inCluster:
+        deletionPolicy: Delete
+        pvcDeletion: false
+        values:
+          persistence:
+            enabled: true
+            size: 10Gi

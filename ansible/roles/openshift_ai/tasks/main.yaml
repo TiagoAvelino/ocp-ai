@@ -51,12 +51,18 @@
     namespace: openshift-marketplace
   register: rhoai_pm
 
-- name: Set RHOAI channel and startingCSV
+- name: Set RHOAI channel (use override or defaultChannel)
   ansible.builtin.set_fact:
-    rhoai_channel: "{{ rhoai_pm.resources[0].status.defaultChannel }}"
+    rhoai_channel: >-
+      {{ rhoai_channel_override
+         if (rhoai_channel_override | default('') | length > 0)
+         else rhoai_pm.resources[0].status.defaultChannel }}
+
+- name: Resolve RHOAI startingCSV for selected channel
+  ansible.builtin.set_fact:
     rhoai_starting_csv: >-
       {{ rhoai_pm.resources[0].status.channels
-         | selectattr('name', 'equalto', rhoai_pm.resources[0].status.defaultChannel)
+         | selectattr('name', 'equalto', rhoai_channel)
          | map(attribute='currentCSV') | first }}
 
 - name: Display RHOAI channel and CSV
@@ -139,22 +145,35 @@
     state: present
     src: "{{ playbook_dir }}/../openshift-ai/datasciencecluster.yaml"
 
-- name: Create data science project namespace
+- name: Wait for OdhDashboardConfig to exist
+  kubernetes.core.k8s_info:
+    api_version: opendatahub.io/v1alpha
+    kind: OdhDashboardConfig
+    name: odh-dashboard-config
+    namespace: "{{ rhoai_applications_namespace }}"
+  register: dashboard_config
+  until: dashboard_config.resources | length > 0
+  retries: 60
+  delay: 10
+
+- name: Enable Gen AI Studio in dashboard
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: v1
-      kind: Namespace
+      apiVersion: opendatahub.io/v1alpha
+      kind: OdhDashboardConfig
       metadata:
-        name: my-data-science-project
-        labels:
-          opendatahub.io/dashboard: "true"
+        name: odh-dashboard-config
+        namespace: "{{ rhoai_applications_namespace }}"
+      spec:
+        dashboardConfig:
+          genAiStudio: true
+  register: genai_patch
 
-- name: Apply MinIO S3 connection secret
-  kubernetes.core.k8s:
-    state: present
-    src: "{{ playbook_dir }}/../openshift-ai/secrets/minio-s3-connection.yaml"
+- name: Display Gen AI Studio status
+  ansible.builtin.debug:
+    msg: "Gen AI Studio (Playground) enabled={{ genai_patch.changed }}"
 
 - name: OpenShift AI Operator is ready
   ansible.builtin.debug:
-    msg: "OpenShift AI Operator installed, DataScienceCluster CR and MinIO S3 connection applied successfully."
+    msg: "OpenShift AI Operator installed, DataScienceCluster CR applied, Gen AI Studio enabled."

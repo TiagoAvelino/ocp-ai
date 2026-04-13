@@ -1,0 +1,18 @@
+apiVersion: ols.openshift.io/v1alpha1
+kind: OLSConfig
+metadata:
+  name: cluster
+spec:
+  llm:
+    providers:
+      - name: red_hat_openshift_ai
+        type: rhoai_vllm
+        credentialsSecretRef:
+          name: rhoai-api-keys
+        url: http://llama-31-8b-predictor.fine-tuning.svc.cluster.local:8080/v1
+        models:
+          - name: llama-3.1-8B
+  ols:
+    defaultProvider: red_hat_openshift_ai
+    defaultModel: llama-3.1-8B
+    hideIcon: false

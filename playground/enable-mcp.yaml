@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gen-ai-aa-mcp-servers
+  namespace: redhat-ods-applications
+data:
+  Tavily-Web-Search: |
+    {
+      "url": "https://mcp.tavily.com/mcp/?tavilyApiKey=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",
+      "description": "Hosted Tavily MCP server for web search.",
+      "transport": "streamable-http"
+    }
+
+  OpenShift-Cluster: |
+    {
+      "url": "http://ocp-mcp-server.agent-demo.svc.cluster.local:8080/sse",
+      "description": "OpenShift MCP server for cluster operations.",
+      "transport": "sse"
+    }

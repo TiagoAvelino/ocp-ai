@@ -62,9 +62,18 @@
     namespace: "{{ minio_namespace }}"
   register: minio_console_route
 
+- name: Create 'fine-tuning' bucket in MinIO
+  ansible.builtin.command: >-
+    oc exec deployment/minio -n {{ minio_namespace }} --
+    sh -c "mc alias set local http://localhost:9000 admin 12345678 && mc mb --ignore-existing local/fine-tuning"
+  register: bucket_result
+  changed_when: "'created' in bucket_result.stdout"
+  failed_when: bucket_result.rc != 0
+
 - name: Display MinIO endpoints
   ansible.builtin.debug:
     msg:
       - "MinIO is ready!"
       - "API endpoint:  https://{{ minio_api_route.resources[0].spec.host | default('N/A') }}"
       - "Console:       https://{{ minio_console_route.resources[0].spec.host | default('N/A') }}"
+      - "Bucket 'fine-tuning': {{ 'created' if 'created' in (bucket_result.stdout | default('')) else 'already exists' }}"

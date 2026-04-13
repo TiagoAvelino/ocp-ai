@@ -1,0 +1,54 @@
+---
+- name: Wait for OpenShift AI to be fully deployed
+  ansible.builtin.pause:
+    seconds: 30
+
+- name: Check if HardwareProfile CRD exists
+  ansible.builtin.command: oc get crd hardwareprofiles.infrastructure.opendatahub.io
+  register: crd_check
+  changed_when: false
+  failed_when: false
+
+- name: Wait for HardwareProfile CRD to be available
+  ansible.builtin.command: oc get crd hardwareprofiles.infrastructure.opendatahub.io
+  register: crd_available
+  until: crd_available.rc == 0
+  retries: 10
+  delay: 30
+  changed_when: false
+  when: crd_check.rc != 0
+
+- name: Create NVIDIA L4 Hardware Profile
+  ansible.builtin.template:
+    src: hardware-profile.yaml.j2
+    dest: /tmp/hardware-profile.yaml
+    mode: '0644'
+
+- name: Apply Hardware Profile to cluster
+  ansible.builtin.command: oc apply -f /tmp/hardware-profile.yaml
+  register: apply_result
+  changed_when: false
+
+- name: Display Hardware Profile creation result
+  ansible.builtin.debug:
+    msg: "{{ apply_result.stdout_lines }}"
+
+- name: Verify Hardware Profile was created
+  ansible.builtin.command: oc get hardwareprofile nvidia-l4-profile -n redhat-ods-applications
+  register: verify_profile
+  changed_when: false
+
+- name: Display Hardware Profile details
+  ansible.builtin.debug:
+    msg: "{{ verify_profile.stdout_lines }}"
+
+- name: Confirm Hardware Profile is enabled
+  ansible.builtin.command: oc get hardwareprofile nvidia-l4-profile -n redhat-ods-applications -o jsonpath='{.metadata.annotations}'
+  register: profile_annotations
+  changed_when: false
+
+- name: Display Hardware Profile annotations
+  ansible.builtin.debug:
+    msg:
+      - "Hardware Profile Annotations:"
+      - "{{ profile_annotations.stdout | from_json | to_nice_yaml }}"

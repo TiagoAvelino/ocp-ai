@@ -1,0 +1,148 @@
+---
+- name: Verify OpenShift installer is available
+  ansible.builtin.command: openshift-install version
+  changed_when: false
+  register: installer_version
+
+- name: Display OpenShift installer version
+  ansible.builtin.debug:
+    msg: "{{ installer_version.stdout_lines[0] }}"
+
+- name: Create cluster installation directory
+  ansible.builtin.file:
+    path: "{{ cluster_install_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Display log monitoring instructions
+  ansible.builtin.debug:
+    msg:
+      - "============================================"
+      - "Log Paths for Cluster Installation Monitoring"
+      - "============================================"
+      - "Primary Log:"
+      - "  {{ cluster_install_dir }}/.openshift_install.log"
+      - ""
+      - "To monitor logs in real-time, run:"
+      - "  tail -f {{ cluster_install_dir }}/.openshift_install.log"
+      - ""
+      - "Additional Logs:"
+      - "  Bootstrap: {{ cluster_install_dir }}/bootstrap.log"
+      - "  Terraform: {{ cluster_install_dir }}/terraform.log"
+      - "============================================"
+
+- name: Generate install-config.yaml from template
+  ansible.builtin.template:
+    src: install-config.yaml.j2
+    dest: "{{ cluster_install_dir }}/install-config.yaml"
+    mode: '0600'
+
+- name: Display install-config.yaml
+  ansible.builtin.debug:
+    msg: "install-config.yaml has been generated at {{ cluster_install_dir }}/install-config.yaml"
+
+- name: Backup install-config.yaml (required by installer)
+  ansible.builtin.copy:
+    src: "{{ cluster_install_dir }}/install-config.yaml"
+    dest: "{{ cluster_install_dir }}/install-config.yaml.bak"
+    mode: '0600'
+
+- name: Create OpenShift cluster
+  ansible.builtin.command:
+    cmd: "openshift-install create cluster --dir={{ cluster_install_dir }} --log-level=info"
+  register: cluster_creation
+  async: 3600  # 1 hour timeout
+  poll: 30
+
+- name: Display cluster creation output
+  ansible.builtin.debug:
+    msg: "{{ cluster_creation.stdout_lines | default(['Cluster creation in progress']) }}"
+
+- name: Wait for cluster to be available
+  ansible.builtin.command: oc get clusteroperators
+  register: cluster_operators
+  until: cluster_operators.rc == 0
+  retries: 10
+  delay: 30
+  changed_when: false
+
+- name: Display cluster operators status
+  ansible.builtin.debug:
+    msg: "{{ cluster_operators.stdout_lines }}"
+
+- name: Save kubeconfig location
+  ansible.builtin.set_fact:
+    kubeconfig_path: "{{ cluster_install_dir }}/auth/kubeconfig"
+
+- name: Verify cluster is accessible
+  ansible.builtin.command: oc get nodes
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: cluster_nodes
+  changed_when: false
+
+- name: Display cluster nodes
+  ansible.builtin.debug:
+    msg: "{{ cluster_nodes.stdout_lines }}"
+
+- name: Export kubeconfig environment variable
+  ansible.builtin.shell: |
+    export KUBECONFIG={{ kubeconfig_path }}
+    echo "KUBECONFIG={{ kubeconfig_path }}" >> ~/.bashrc
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Create kubeconfig setup script
+  ansible.builtin.copy:
+    content: |
+      #!/bin/bash
+      export KUBECONFIG={{ kubeconfig_path }}
+      echo "Kubeconfig set to: $KUBECONFIG"
+    dest: "{{ cluster_install_dir }}/setup-kubeconfig.sh"
+    mode: '0755'
+
+- name: Show cluster installation summary
+  ansible.builtin.debug:
+    msg:
+      - "=== Cluster Installation Complete ==="
+      - "Cluster Name: {{ cluster_name }}"
+      - "Base Domain: {{ base_domain }}"
+      - "Installation Directory: {{ cluster_install_dir }}"
+      - "Kubeconfig: {{ kubeconfig_path }}"
+      - ""
+      - "Log Files:"
+      - "  Main Log: {{ cluster_install_dir }}/.openshift_install.log"
+      - "  Monitor: tail -f {{ cluster_install_dir }}/.openshift_install.log"
+      - ""
+      - "To configure kubectl/oc (option 1 - automatically added to ~/.bashrc):"
+      - "  export KUBECONFIG={{ kubeconfig_path }}"
+      - ""
+
+- name: Create local kubeconfig directory
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/kubeconfig"
+    state: directory
+    mode: '0755'
+
+- name: Copy kubeconfig to local directory
+  ansible.builtin.copy:
+    src: "{{ kubeconfig_path }}"
+    dest: "{{ playbook_dir }}/kubeconfig/kubeconfig"
+    mode: '0600'
+
+- name: Copy installation log to local directory
+  ansible.builtin.copy:
+    src: "{{ cluster_install_dir }}/.openshift_install.log"
+    dest: "{{ playbook_dir }}/kubeconfig/output.log"
+    mode: '0644'
+
+- name: Show additional kubeconfig instructions
+  ansible.builtin.debug:
+    msg:
+      - "To configure kubectl/oc (option 2 - use setup script):"
+      - "  source {{ cluster_install_dir }}/setup-kubeconfig.sh"
+      - ""
+      - "Verify cluster access:"
+      - "  oc get nodes"
+      - "  oc get clusteroperators"

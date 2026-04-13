@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tavily-api
+  namespace: fine-tuning
+type: Opaque
+stringData:
+  TAVILY_SEARCH_API_KEY: "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"

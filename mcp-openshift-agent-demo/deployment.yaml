@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ocp-mcp-server
+  namespace: agent-demo
+  labels:
+    app: ocp-mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ocp-mcp-server
+  template:
+    metadata:
+      labels:
+        app: ocp-mcp-server
+        deployment: ocp-mcp-server
+    spec:
+      serviceAccountName: ocp-mcp
+      containers:
+        - name: ocp-mcp-server
+          image: quay.io/eformat/kubernetes-mcp-server:latest
+          imagePullPolicy: Always
+          command: ["./kubernetes-mcp-server"]
+          args:
+            - --port
+            - "8080"
+            - --cluster-provider
+            - in-cluster
+            - --stateless
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources: {}

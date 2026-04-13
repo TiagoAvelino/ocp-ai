@@ -1,0 +1,3 @@
+When calling tools, arguments must match the schema exactly.
+Do not send booleans or integers as strings.
+Always respect the tool JSON schema.

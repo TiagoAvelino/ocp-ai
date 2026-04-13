@@ -1,0 +1,73 @@
+apiVersion: machine.openshift.io/v1beta1
+kind: MachineSet
+metadata:
+  name: tiago-cluster-9fkbd-gpu-g6-xlarge-us-east-2a
+  namespace: openshift-machine-api
+  labels:
+    machine.openshift.io/cluster-api-cluster: tiago-cluster-9fkbd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      machine.openshift.io/cluster-api-cluster: tiago-cluster-9fkbd
+      machine.openshift.io/cluster-api-machineset: tiago-cluster-9fkbd-gpu-g6-xlarge-us-east-2a
+  template:
+    metadata:
+      labels:
+        machine.openshift.io/cluster-api-cluster: tiago-cluster-9fkbd
+        machine.openshift.io/cluster-api-machine-role: worker
+        machine.openshift.io/cluster-api-machine-type: worker
+        machine.openshift.io/cluster-api-machineset: tiago-cluster-9fkbd-gpu-g6-xlarge-us-east-2a
+    spec:
+      lifecycleHooks: {}
+      metadata: {}
+      providerSpec:
+        value:
+          ami:
+            id: ami-0bc8dda494f111572
+          apiVersion: machine.openshift.io/v1beta1
+          kind: AWSMachineProviderConfig
+          blockDevices:
+            - ebs:
+                encrypted: true
+                iops: 0
+                kmsKey:
+                  arn: ""
+                volumeSize: 120
+                volumeType: gp3
+          capacityReservationId: ""
+          credentialsSecret:
+            name: aws-cloud-credentials
+          deviceIndex: 0
+          iamInstanceProfile:
+            id: tiago-cluster-9fkbd-worker-profile
+          instanceType: g6.xlarge
+          metadata:
+            creationTimestamp: null
+          metadataServiceOptions: {}
+          placement:
+            availabilityZone: us-east-2a
+            region: us-east-2
+          securityGroups:
+            - filters:
+                - name: tag:Name
+                  values:
+                    - tiago-cluster-9fkbd-node
+            - filters:
+                - name: tag:Name
+                  values:
+                    - tiago-cluster-9fkbd-lb
+          subnet:
+            filters:
+              - name: tag:Name
+                values:
+                  - tiago-cluster-9fkbd-subnet-private-us-east-2a
+          tags:
+            - name: kubernetes.io/cluster/tiago-cluster-9fkbd
+              value: owned
+            - name: adminContact
+              value: tavelino@redhat.com
+            - name: costCenter
+              value: "12345"
+          userDataSecret:
+            name: worker-user-data

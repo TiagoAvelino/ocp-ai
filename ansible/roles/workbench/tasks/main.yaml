@@ -1,0 +1,59 @@
+---
+- name: Create data science project
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../openshift-ai/workbenches/datascience-project.yaml"
+
+- name: Apply MinIO S3 connection secret
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../openshift-ai/secrets/minio-s3-connection.yaml"
+
+- name: Check if workbench PVC already exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    name: fine-tuning
+    namespace: fine-tuning
+  register: pvc_check
+
+- name: Create workbench PVC
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../openshift-ai/workbenches/workbench-pvc.yaml"
+  when: pvc_check.resources | length == 0
+
+- name: Wait for Notebook CRD to be available
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: notebooks.kubeflow.org
+  register: notebook_crd
+  until:
+    - notebook_crd.resources | length > 0
+    - notebook_crd.resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Established') | selectattr('status', 'equalto', 'True') | list | length > 0
+  retries: 60
+  delay: 10
+
+- name: Create workbench Notebook
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ playbook_dir }}/../openshift-ai/workbenches/workbench-notebook.yaml"
+
+- name: Workbench setup complete
+  ansible.builtin.debug:
+    msg:
+      - "Workbench deployed successfully:"
+      - "  - Data science project 'fine-tuning' created"
+      - "  - MinIO S3 data connection attached"
+      - "  - Workbench 'my-workbench' created (PyTorch CUDA + NVIDIA L4 Hardware Profile)"
+      - ""
+      - "To configure the pipeline server, go to the OpenShift AI dashboard:"
+      - "  1. Click Projects > fine-tuning > Pipelines tab"
+      - "  2. Click 'Configure pipeline server'"
+      - "  3. Enter MinIO S3 connection details:"
+      - "     Access key: admin"
+      - "     Secret key: 12345678"
+      - "     Endpoint: http://minio-api.minio.svc.cluster.local:9000"
+      - "     Region: us-east-1"
+      - "     Bucket: pipelines"
