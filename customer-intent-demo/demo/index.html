@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Customer Intent Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    textarea { width: 100%; min-height: 120px; }
+    pre { background: #f4f4f4; padding: 1rem; overflow: auto; }
+    .examples button { margin-right: .5rem; margin-bottom: .5rem; }
+  </style>
+</head>
+<body>
+  <h1>Triagem de solicitações bancárias</h1>
+  <p>Informe a URL do backend Quarkus em <code>BACKEND_URL</code> abaixo.</p>
+  <label>Backend URL</label>
+  <input id="backend" style="width:100%" value="https://customer-intent-backend-customer-intent-demo.apps.example.com/api/v1/routing" />
+  <label>Mensagem do cliente</label>
+  <textarea id="text">My transfer is still pending</textarea>
+  <div class="examples">
+    <button type="button" onclick="setText('My transfer is still pending')">Transferência pendente</button>
+    <button type="button" onclick="setText('There is something wrong with my payment')">Pagamento ambíguo</button>
+    <button type="button" onclick="setText('I do not recognize this cash withdrawal')">Saque não reconhecido</button>
+  </div>
+  <p><button id="send">Classificar e encaminhar</button></p>
+  <pre id="result">Aguardando envio...</pre>
+  <script>
+    function setText(value) { document.getElementById('text').value = value; }
+    document.getElementById('send').onclick = async () => {
+      const url = document.getElementById('backend').value;
+      const text = document.getElementById('text').value;
+      const result = document.getElementById('result');
+      result.textContent = 'Enviando...';
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, correlationId: crypto.randomUUID() })
+        });
+        const body = await response.json();
+        result.textContent = JSON.stringify(body, null, 2);
+      } catch (err) {
+        result.textContent = String(err);
+      }
+    };
+  </script>
+</body>
+</html>

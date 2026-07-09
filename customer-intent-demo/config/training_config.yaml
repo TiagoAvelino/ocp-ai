@@ -1,0 +1,64 @@
+project: customer-intent-demo
+dataset:
+  name: PolyAI/banking77
+  revision: main
+  validation_split: 0.1
+  seed: 42
+  intent_config: config/intent_mapping.yaml
+
+s3:
+  bucket: customer-intent-demo
+  prefix: s3://customer-intent-demo
+  paths:
+    raw: datasets/banking77/raw
+    prepared: datasets/banking77/prepared
+    models: models/customer-intent
+    reports: reports/evaluations
+
+mlflow:
+  experiment_name: banking77-customer-intent
+  registered_model_name: banking77-customer-intent
+  tracking_uri: https://mlflow.redhat-ods-applications.svc:8443
+
+experiments:
+  baseline:
+    run_name: baseline-tfidf-logistic-regression
+    type: tfidf_logistic
+    max_features: 10000
+    ngram_range: [1, 2]
+    C: 1.0
+
+  distilbert_conservative:
+    run_name: distilbert-lr-2e-5-epochs-2
+    model_name: distilbert-base-uncased
+    learning_rate: 2.0e-5
+    epochs: 2
+    batch_size: 16
+    max_length: 128
+    weight_decay: 0.01
+
+  distilbert_intermediate:
+    run_name: distilbert-lr-5e-5-epochs-3
+    model_name: distilbert-base-uncased
+    learning_rate: 5.0e-5
+    epochs: 3
+    batch_size: 16
+    max_length: 128
+    weight_decay: 0.01
+
+  distilbert_aggressive:
+    run_name: distilbert-lr-1e-4-epochs-3
+    model_name: distilbert-base-uncased
+    learning_rate: 1.0e-4
+    epochs: 3
+    batch_size: 16
+    max_length: 128
+    weight_decay: 0.01
+
+thresholds: [0.70, 0.80, 0.90]
+default_threshold: 0.80
+
+approval_criteria:
+  min_validation_macro_f1: 0.75
+  max_incorrect_auto_routing_rate: 0.08
+  max_latency_p95_ms: 500

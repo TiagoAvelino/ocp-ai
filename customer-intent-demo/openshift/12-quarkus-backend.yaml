@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-intent-backend
+  namespace: customer-intent-demo
+  labels:
+    app: customer-intent-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customer-intent-backend
+  template:
+    metadata:
+      labels:
+        app: customer-intent-backend
+    spec:
+      containers:
+        - name: backend
+          image: image-registry.openshift-image-registry.svc:5000/customer-intent-demo/customer-intent-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: MODEL_SERVICE_URL
+              value: http://customer-intent-inference.customer-intent-demo.svc.cluster.local:8080
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-intent-backend
+  namespace: customer-intent-demo
+  labels:
+    app: customer-intent-backend
+spec:
+  selector:
+    app: customer-intent-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: customer-intent-backend
+  namespace: customer-intent-demo
+spec:
+  to:
+    kind: Service
+    name: customer-intent-backend
+  port:
+    targetPort: http
+  tls:
+    termination: edge

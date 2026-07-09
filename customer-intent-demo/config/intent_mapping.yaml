@@ -1,0 +1,56 @@
+# 12 intenções Banking77 para MVP + mapeamento para filas empresariais
+license: CC-BY-4.0
+dataset: PolyAI/banking77
+selected_intents:
+  - card_arrival
+  - card_not_working
+  - lost_or_stolen_card
+  - card_payment_not_recognised
+  - pending_transfer
+  - failed_transfer
+  - beneficiary_not_allowed
+  - transfer_not_received_by_recipient
+  - passcode_forgotten
+  - unable_to_verify_identity
+  - cash_withdrawal_not_recognised
+  - wrong_amount_of_cash_received
+
+departments:
+  cards-support:
+    display_name: Cards Support
+    intents:
+      - card_arrival
+      - card_not_working
+      - lost_or_stolen_card
+      - card_payment_not_recognised
+  transfers-support:
+    display_name: Transfers Support
+    intents:
+      - pending_transfer
+      - failed_transfer
+      - beneficiary_not_allowed
+      - transfer_not_received_by_recipient
+  security-identity:
+    display_name: Security and Identity
+    intents:
+      - passcode_forgotten
+      - unable_to_verify_identity
+  atm-support:
+    display_name: ATM Support
+    intents:
+      - cash_withdrawal_not_recognised
+      - wrong_amount_of_cash_received
+
+intent_to_department:
+  card_arrival: cards-support
+  card_not_working: cards-support
+  lost_or_stolen_card: cards-support
+  card_payment_not_recognised: cards-support
+  pending_transfer: transfers-support
+  failed_transfer: transfers-support
+  beneficiary_not_allowed: transfers-support
+  transfer_not_received_by_recipient: transfers-support
+  passcode_forgotten: security-identity
+  unable_to_verify_identity: security-identity
+  cash_withdrawal_not_recognised: atm-support
+  wrong_amount_of_cash_received: atm-support

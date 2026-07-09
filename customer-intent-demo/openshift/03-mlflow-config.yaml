@@ -1,0 +1,8 @@
+apiVersion: mlflow.kubeflow.org/v1
+kind: MLflowConfig
+metadata:
+  name: mlflow
+  namespace: customer-intent-demo
+spec:
+  artifactRootSecret: customer-intent-s3-connection
+  artifactRootPath: workspaces/customer-intent-demo

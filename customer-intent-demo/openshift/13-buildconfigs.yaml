@@ -1,0 +1,35 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: customer-intent-inference
+  namespace: customer-intent-demo
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: customer-intent-inference:latest
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: inference/Dockerfile
+  triggers: []
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: customer-intent-backend
+  namespace: customer-intent-demo
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: customer-intent-backend:latest
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers: []

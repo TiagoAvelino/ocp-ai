@@ -1,0 +1,93 @@
+# Job one-shot: experimento MLflow (baseline + 3 DistilBERT) no PVC banking77-training.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: banking77-mlflow-experiment
+  namespace: customer-intent-demo
+  labels:
+    app: banking77-mlflow-experiment
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: banking77-mlflow-experiment
+    spec:
+      restartPolicy: Never
+      serviceAccountName: customer-intent-pipeline
+      tolerations:
+        - effect: NoSchedule
+          key: nvidia.com/gpu
+          operator: Exists
+      containers:
+        - name: experiment
+          image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+          imagePullPolicy: IfNotPresent
+          workingDir: /opt/app-root/src/customer-intent-demo
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              cat /etc/pki/tls/custom-certs/ca-bundle.crt /etc/openshift-service-ca/service-ca.crt > /tmp/combined-ca.crt
+              export SSL_CERT_FILE=/tmp/combined-ca.crt
+              export REQUESTS_CA_BUNDLE=/tmp/combined-ca.crt
+              pip install -q -r training/requirements.txt
+              python training/run_mlflow_banking_experiment.py --skip-prepare
+          envFrom:
+            - secretRef:
+                name: customer-intent-s3-connection
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: https://mlflow.redhat-ods-applications.svc:8443
+            - name: MLFLOW_TRACKING_AUTH
+              value: kubernetes-namespaced
+            - name: SSL_CERT_FILE
+              value: /etc/pki/tls/custom-certs/ca-bundle.crt
+            - name: REQUESTS_CA_BUNDLE
+              value: /etc/pki/tls/custom-certs/ca-bundle.crt
+            - name: HF_HOME
+              value: /opt/app-root/src/model-cache
+            - name: TRANSFORMERS_CACHE
+              value: /opt/app-root/src/model-cache
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: http://minio.minio.svc.cluster.local:9000
+            - name: AWS_ENDPOINT_URL
+              value: http://minio.minio.svc.cluster.local:9000
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+              cpu: "8"
+              memory: 32Gi
+            requests:
+              cpu: "4"
+              memory: 16Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /opt/app-root/src
+            - name: shm
+              mountPath: /dev/shm
+            - name: trusted-ca
+              mountPath: /etc/pki/tls/custom-certs/ca-bundle.crt
+              subPath: ca-bundle.crt
+              readOnly: true
+            - name: openshift-service-ca
+              mountPath: /etc/openshift-service-ca
+              readOnly: true
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: banking77-training
+        - name: shm
+          emptyDir:
+            medium: Memory
+        - name: trusted-ca
+          configMap:
+            name: odh-trusted-ca-bundle
+            items:
+              - key: ca-bundle.crt
+                path: ca-bundle.crt
+        - name: openshift-service-ca
+          configMap:
+            name: openshift-service-ca.crt

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: customer-intent-demo
+  labels:
+    opendatahub.io/dashboard: "true"
+  annotations:
+    openshift.io/display-name: Customer Intent Classification
+    openshift.io/description: Triagem automática de solicitações de clientes (Banking77)

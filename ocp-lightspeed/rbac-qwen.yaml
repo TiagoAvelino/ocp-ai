@@ -1,0 +1,14 @@
+# Permite que o Lightspeed chame o endpoint do Qwen protegido por kube-rbac-proxy.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lightspeed-qwen-inferenceservice-view
+  namespace: ai-model
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: redhataiqwen35-35b-a3b-fp8-dyn-view-role
+subjects:
+  - kind: ServiceAccount
+    name: lightspeed-app-server
+    namespace: openshift-lightspeed

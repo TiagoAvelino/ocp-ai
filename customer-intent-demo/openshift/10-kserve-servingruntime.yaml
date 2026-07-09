@@ -1,0 +1,33 @@
+# Opcional: implantação via KServe após build da imagem de inferência
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  name: customer-intent-distilbert
+  namespace: customer-intent-demo
+  labels:
+    opendatahub.io/dashboard: "true"
+spec:
+  supportedModelFormats:
+    - name: customer-intent-distilbert
+      version: "1"
+      autoSelect: true
+  containers:
+    - name: kserve-container
+      image: image-registry.openshift-image-registry.svc:5000/customer-intent-demo/customer-intent-inference:latest
+      env:
+        - name: MODEL_DIR
+          value: /app/model
+        - name: DECISION_THRESHOLD
+          value: "0.80"
+        - name: MODEL_VERSION
+          value: "1.0.0"
+      ports:
+        - containerPort: 8080
+          protocol: TCP
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi

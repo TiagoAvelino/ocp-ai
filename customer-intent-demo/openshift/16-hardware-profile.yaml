@@ -1,0 +1,46 @@
+# Hardware Profile para workbenches/pipelines no nó g6.12xlarge (4x NVIDIA-L4).
+# Namespace cluster-scoped do OpenShift AI: redhat-ods-applications
+apiVersion: infrastructure.opendatahub.io/v1
+kind: HardwareProfile
+metadata:
+  name: nvidia-l4-profile
+  namespace: redhat-ods-applications
+  annotations:
+    opendatahub.io/display-name: NVIDIA L4 (4 GPU)
+    opendatahub.io/description: >-
+      Perfil para nós g6.12xlarge com até 4 GPUs NVIDIA L4 — workbench,
+      model serving e pipelines do customer-intent-demo.
+    opendatahub.io/disabled: "false"
+    opendatahub.io/managed: "false"
+    opendatahub.io/dashboard-feature-visibility: '["workbench","model-serving","pipelines"]'
+    opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'
+spec:
+  identifiers:
+    - displayName: CPU
+      identifier: cpu
+      resourceType: CPU
+      defaultCount: 8
+      minCount: 2
+      maxCount: 48
+
+    - displayName: Memory
+      identifier: memory
+      resourceType: Memory
+      defaultCount: 32Gi
+      minCount: 8Gi
+      maxCount: 192Gi
+
+    - displayName: NVIDIA GPU
+      identifier: nvidia.com/gpu
+      resourceType: Accelerator
+      defaultCount: 1
+      minCount: 0
+      maxCount: 4
+
+  scheduling:
+    type: Node
+    node:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+        nvidia.com/gpu.product: NVIDIA-L4
+        node.kubernetes.io/instance-type: g6.12xlarge

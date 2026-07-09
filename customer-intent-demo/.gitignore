@@ -1,0 +1,26 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Node / Electron demo
+node_modules/
+
+# Java / Quarkus
+quarkus-backend/target/
+
+# ML artifacts (local only)
+artifacts/
+reports/
+mlruns/
+*.db
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

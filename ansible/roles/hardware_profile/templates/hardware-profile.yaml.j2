@@ -29,9 +29,13 @@ spec:
       identifier: nvidia.com/gpu
       resourceType: Accelerator
       defaultCount: 1
-      minCount: 1
-      maxCount: 1
+      minCount: 0
+      maxCount: 4
 
-  nodeSelector:
-    nvidia.com/gpu.present: "true"
-    nvidia.com/gpu.product: NVIDIA-L4
+  scheduling:
+    type: Node
+    node:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+        nvidia.com/gpu.product: NVIDIA-L4
+        node.kubernetes.io/instance-type: g6.12xlarge

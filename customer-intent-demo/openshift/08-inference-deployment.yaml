@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-intent-inference
+  namespace: customer-intent-demo
+  labels:
+    app: customer-intent-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customer-intent-inference
+  template:
+    metadata:
+      labels:
+        app: customer-intent-inference
+    spec:
+      initContainers:
+        - name: sync-model
+          image: quay.io/minio/mc:latest
+          envFrom:
+            - secretRef:
+                name: customer-intent-s3-connection
+          command:
+            - /bin/sh
+            - -c
+            - |
+              export MC_CONFIG_DIR=/tmp/.mc
+              mc alias set s3 "${AWS_S3_ENDPOINT}" "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}"
+              if mc cp --recursive "s3/${AWS_S3_BUCKET}/models/customer-intent/approved/" /model/; then
+                echo "Modelo sincronizado do S3."
+              else
+                echo "Modelo aprovado ainda nao disponivel no S3; deployment sobe aguardando treino."
+                mkdir -p /model
+              fi
+          volumeMounts:
+            - name: model
+              mountPath: /model
+      containers:
+        - name: inference
+          image: image-registry.openshift-image-registry.svc:5000/customer-intent-demo/customer-intent-inference:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: MODEL_DIR
+              value: /app/model
+            - name: DECISION_THRESHOLD
+              value: "0.80"
+            - name: MODEL_VERSION
+              value: "1.0.0"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: model
+              mountPath: /app/model
+      volumes:
+        - name: model
+          persistentVolumeClaim:
+            claimName: customer-intent-model

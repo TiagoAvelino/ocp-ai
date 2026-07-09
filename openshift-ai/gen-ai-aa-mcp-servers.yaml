@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gen-ai-aa-mcp-servers
+  namespace: redhat-ods-applications
+data:
+  Remediation-OpenShift-MCP: |
+    {
+      "url": "http://mcp-server.remediation-app.svc.cluster.local:9000/mcp",
+      "description": "MCP de remediação OpenShift (DemoOpenShift) — ferramentas de troubleshooting e operações no cluster.",
+      "transport": "streamable-http"
+    }

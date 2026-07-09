@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Customer Intent Demo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 13.5C4 9.91 6.91 7 10.5 7h3C17.09 7 20 9.91 20 13.5V16a2 2 0 0 1-2 2h-1.2a1.8 1.8 0 0 1-1.8-1.8v-1.4a1.8 1.8 0 0 1 1.8-1.8H18v-2.5C18 10.57 15.93 8.5 13.5 8.5h-3C8.07 8.5 6 10.57 6 13.5V16h1.2a1.8 1.8 0 0 1 1.8 1.8v1.4A1.8 1.8 0 0 1 7.2 21H6a2 2 0 0 1-2-2v-2.5Z" fill="currentColor"/>
+          <path d="M9 18.5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Customer Intent Classification</h1>
+        <p>Triagem automática de solicitações bancárias · OpenShift AI</p>
+      </div>
+    </div>
+    <div class="masthead-meta">
+      <span class="badge">Quarkus + DistilBERT</span>
+      <span class="badge badge-muted">threshold 0.80</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Backend</h2>
+        <label class="field-label" for="backend-url">URL do roteamento</label>
+        <input id="backend-url" type="url" spellcheck="false" />
+        <label class="checkbox-row">
+          <input id="insecure-tls" type="checkbox" checked />
+          Ignorar certificado TLS (cluster lab)
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>Casos de demonstração</h2>
+        <ul id="case-list" class="case-list"></ul>
+      </section>
+
+      <section class="panel actions">
+        <button id="run-selected" class="btn btn-primary">Classificar selecionado</button>
+        <button id="run-all" class="btn btn-secondary">Executar todos (6)</button>
+        <button id="clear-results" class="btn btn-ghost">Limpar tabela</button>
+      </section>
+
+      <section class="panel legend">
+        <h2>Decisão empresarial</h2>
+        <div class="legend-item">
+          <span class="pill pill-auto">AUTO_ROUTE</span>
+          <span>confiança ≥ 0.80 → fila do departamento</span>
+        </div>
+        <div class="legend-item">
+          <span class="pill pill-review">HUMAN_REVIEW</span>
+          <span>confiança &lt; 0.80 → revisão humana</span>
+        </div>
+      </section>
+    </aside>
+
+    <main class="content">
+      <section class="panel table-panel">
+        <div class="table-header">
+          <h2>Resultados de roteamento</h2>
+          <span id="status-text" class="status-text">Pronto</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Caso</th>
+                <th>Mensagem do cliente</th>
+                <th>Intenção (IA)</th>
+                <th>Departamento</th>
+                <th>Confiança</th>
+                <th>Decisão</th>
+                <th>Fila</th>
+                <th>Modelo</th>
+              </tr>
+            </thead>
+            <tbody id="results-body">
+              <tr class="empty-row">
+                <td colspan="8">Selecione um caso ou clique em "Executar todos".</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel detail-panel">
+        <h2>Detalhe JSON (última resposta)</h2>
+        <pre id="json-detail">{}</pre>
+      </section>
+    </main>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

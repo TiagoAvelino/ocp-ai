@@ -1,0 +1,21 @@
+apiVersion: ols.openshift.io/v1alpha1
+kind: OLSConfig
+metadata:
+  name: cluster
+  namespace: openshift-lightspeed
+spec:
+  llm:
+    providers:
+      - name: red_hat_openshift_ai
+        type: rhoai_vllm
+        credentialsSecretRef:
+          name: rhoai-api-keys
+        url: https://redhataiqwen35-35b-a3b-fp8-dyn-predictor.ai-model.svc.cluster.local:8443/v1
+        models:
+          - name: redhataiqwen35-35b-a3b-fp8-dyn
+  ols:
+    defaultProvider: red_hat_openshift_ai
+    defaultModel: redhataiqwen35-35b-a3b-fp8-dyn
+    hideIcon: false
+    additionalCAConfigMapRef:
+      name: rhoai-trusted-certs

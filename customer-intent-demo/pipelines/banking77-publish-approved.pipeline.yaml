@@ -1,0 +1,97 @@
+# PIPELINE DEFINITION
+# Name: banking77-publish-approved
+# Description: Publica o modelo selecionado no S3 e no MLflow Model Registry.
+components:
+  comp-publish-approved-model:
+    executorLabel: exec-publish-approved-model
+deploymentSpec:
+  executors:
+    exec-publish-approved-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - publish_approved_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'datasets>=3.0.0'\
+          \ 'transformers>=4.40.0' 'scikit-learn>=1.4.0' 'pandas>=2.2.0' 'matplotlib>=3.8.0'\
+          \ 'seaborn>=0.13.0' 'pyyaml>=6.0.0' 'boto3>=1.34.0' 'mlflow[kubernetes]>=3.11.0'\
+          \ 'safetensors>=0.4.0' 'accelerate>=0.30.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef publish_approved_model():\n    \"\"\"Exporta modelo aprovado\
+          \ -> S3 -> Model Registry.\"\"\"\n    import os\n    import subprocess\n\
+          \    import sys\n\n    project_root = \"/opt/app-root/src/customer-intent-demo\"\
+          \n    os.environ.setdefault(\"MLFLOW_TRACKING_AUTH\", \"kubernetes-namespaced\"\
+          )\n    os.environ.setdefault(\"HF_HOME\", \"/opt/app-root/src/model-cache\"\
+          )\n    os.environ.setdefault(\"TRANSFORMERS_CACHE\", \"/opt/app-root/src/model-cache\"\
+          )\n    cmd = [sys.executable, f\"{project_root}/training/publish_approved_model.py\"\
+          ]\n    print(\">>>\", \" \".join(cmd), flush=True)\n    subprocess.run(cmd,\
+          \ check=True, cwd=project_root)\n\n"
+        env:
+        - name: MLFLOW_TRACKING_AUTH
+          value: kubernetes-namespaced
+        - name: HF_HOME
+          value: /opt/app-root/src/model-cache
+        - name: TRANSFORMERS_CACHE
+          value: /opt/app-root/src/model-cache
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+pipelineInfo:
+  description: Publica o modelo selecionado no S3 e no MLflow Model Registry.
+  name: banking77-publish-approved
+root:
+  dag:
+    tasks:
+      publish-approved-model:
+        cachingOptions: {}
+        componentRef:
+          name: comp-publish-approved-model
+        taskInfo:
+          name: 5. Publicar modelo aprovado
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-publish-approved-model:
+          pvcMount:
+          - constant: banking77-training
+            mountPath: /opt/app-root/src
+            pvcNameParameter:
+              runtimeValue:
+                constant: banking77-training
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            - envVar: AWS_DEFAULT_REGION
+              secretKey: AWS_DEFAULT_REGION
+            - envVar: AWS_S3_ENDPOINT
+              secretKey: AWS_S3_ENDPOINT
+            - envVar: AWS_S3_BUCKET
+              secretKey: AWS_S3_BUCKET
+            optional: false
+            secretName: customer-intent-s3-connection
+            secretNameParameter:
+              runtimeValue:
+                constant: customer-intent-s3-connection

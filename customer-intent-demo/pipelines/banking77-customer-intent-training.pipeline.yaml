@@ -1,0 +1,772 @@
+# PIPELINE DEFINITION
+# Name: banking77-customer-intent-training
+# Description: Pipeline reproduzivel: preparacao Banking77 (12 intencoes), baseline, 3 fine-tunings DistilBERT em sequencia (1 GPU), selecao MLflow e publicacao do modelo aprovado.
+# Inputs:
+#    epochs_aggressive: int [Default: 3.0]
+#    epochs_conservative: int [Default: 2.0]
+#    epochs_intermediate: int [Default: 3.0]
+#    lr_aggressive: float [Default: 0.0001]
+#    lr_conservative: float [Default: 2e-05]
+#    lr_intermediate: float [Default: 5e-05]
+#    max_incorrect_auto_routing_rate: float [Default: 0.08]
+#    min_validation_macro_f1: float [Default: 0.75]
+#    random_seed: int [Default: 42.0]
+#    routing_threshold: float [Default: 0.8]
+#    validation_split: float [Default: 0.1]
+components:
+  comp-evaluate-and-select:
+    executorLabel: exec-evaluate-and-select
+    inputDefinitions:
+      parameters:
+        max_incorrect_auto_routing_rate:
+          parameterType: NUMBER_DOUBLE
+        min_validation_macro_f1:
+          parameterType: NUMBER_DOUBLE
+        routing_threshold:
+          parameterType: NUMBER_DOUBLE
+  comp-prepare-dataset:
+    executorLabel: exec-prepare-dataset
+    inputDefinitions:
+      parameters:
+        random_seed:
+          parameterType: NUMBER_INTEGER
+        validation_split:
+          parameterType: NUMBER_DOUBLE
+  comp-publish-approved-model:
+    executorLabel: exec-publish-approved-model
+  comp-train-baseline:
+    executorLabel: exec-train-baseline
+  comp-train-distilbert-aggressive:
+    executorLabel: exec-train-distilbert-aggressive
+    inputDefinitions:
+      parameters:
+        epochs:
+          parameterType: NUMBER_INTEGER
+        learning_rate:
+          parameterType: NUMBER_DOUBLE
+  comp-train-distilbert-conservative:
+    executorLabel: exec-train-distilbert-conservative
+    inputDefinitions:
+      parameters:
+        epochs:
+          parameterType: NUMBER_INTEGER
+        learning_rate:
+          parameterType: NUMBER_DOUBLE
+  comp-train-distilbert-intermediate:
+    executorLabel: exec-train-distilbert-intermediate
+    inputDefinitions:
+      parameters:
+        epochs:
+          parameterType: NUMBER_INTEGER
+        learning_rate:
+          parameterType: NUMBER_DOUBLE
+deploymentSpec:
+  executors:
+    exec-evaluate-and-select:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_and_select
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'datasets>=3.0.0'\
+          \ 'transformers>=4.40.0' 'scikit-learn>=1.4.0' 'pandas>=2.2.0' 'matplotlib>=3.8.0'\
+          \ 'seaborn>=0.13.0' 'pyyaml>=6.0.0' 'boto3>=1.34.0' 'mlflow[kubernetes]>=3.11.0'\
+          \ 'safetensors>=0.4.0' 'accelerate>=0.30.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_and_select(\n    min_validation_macro_f1: float,\n \
+          \   max_incorrect_auto_routing_rate: float,\n    routing_threshold: float,\n\
+          ):\n    \"\"\"Compara runs MLflow, analisa thresholds e seleciona o vencedor.\"\
+          \"\"\n    import os\n    import subprocess\n    import sys\n\n    project_root\
+          \ = \"/opt/app-root/src/customer-intent-demo\"\n    os.environ.setdefault(\"\
+          MLFLOW_TRACKING_AUTH\", \"kubernetes-namespaced\")\n    os.environ.setdefault(\"\
+          HF_HOME\", \"/opt/app-root/src/model-cache\")\n    os.environ.setdefault(\"\
+          TRANSFORMERS_CACHE\", \"/opt/app-root/src/model-cache\")\n    cmd = [\n\
+          \        sys.executable,\n        f\"{project_root}/training/evaluate_and_select.py\"\
+          ,\n        \"--min-validation-macro-f1\",\n        str(min_validation_macro_f1),\n\
+          \        \"--max-incorrect-auto-routing-rate\",\n        str(max_incorrect_auto_routing_rate),\n\
+          \        \"--routing-threshold\",\n        str(routing_threshold),\n   \
+          \ ]\n    print(\">>>\", \" \".join(cmd), flush=True)\n    subprocess.run(cmd,\
+          \ check=True, cwd=project_root)\n\n"
+        env:
+        - name: MLFLOW_TRACKING_AUTH
+          value: kubernetes-namespaced
+        - name: HF_HOME
+          value: /opt/app-root/src/model-cache
+        - name: TRANSFORMERS_CACHE
+          value: /opt/app-root/src/model-cache
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+    exec-prepare-dataset:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - prepare_dataset
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'datasets>=3.0.0'\
+          \ 'transformers>=4.40.0' 'scikit-learn>=1.4.0' 'pandas>=2.2.0' 'matplotlib>=3.8.0'\
+          \ 'seaborn>=0.13.0' 'pyyaml>=6.0.0' 'boto3>=1.34.0' 'mlflow[kubernetes]>=3.11.0'\
+          \ 'safetensors>=0.4.0' 'accelerate>=0.30.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef prepare_dataset(random_seed: int, validation_split: float):\n\
+          \    \"\"\"Filtra 12 intencoes Banking77, divide dados e envia ao S3.\"\"\
+          \"\n    import os\n    import subprocess\n    import sys\n\n    project_root\
+          \ = \"/opt/app-root/src/customer-intent-demo\"\n    os.environ.setdefault(\"\
+          MLFLOW_TRACKING_AUTH\", \"kubernetes-namespaced\")\n    os.environ.setdefault(\"\
+          HF_HOME\", \"/opt/app-root/src/model-cache\")\n    os.environ.setdefault(\"\
+          TRANSFORMERS_CACHE\", \"/opt/app-root/src/model-cache\")\n    cmd = [\n\
+          \        sys.executable,\n        f\"{project_root}/training/prepare_dataset.py\"\
+          ,\n        \"--upload-s3\",\n        \"--seed\",\n        str(random_seed),\n\
+          \        \"--validation-split\",\n        str(validation_split),\n    ]\n\
+          \    print(\">>>\", \" \".join(cmd), flush=True)\n    subprocess.run(cmd,\
+          \ check=True, cwd=project_root)\n\n"
+        env:
+        - name: MLFLOW_TRACKING_AUTH
+          value: kubernetes-namespaced
+        - name: HF_HOME
+          value: /opt/app-root/src/model-cache
+        - name: TRANSFORMERS_CACHE
+          value: /opt/app-root/src/model-cache
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+    exec-publish-approved-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - publish_approved_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'datasets>=3.0.0'\
+          \ 'transformers>=4.40.0' 'scikit-learn>=1.4.0' 'pandas>=2.2.0' 'matplotlib>=3.8.0'\
+          \ 'seaborn>=0.13.0' 'pyyaml>=6.0.0' 'boto3>=1.34.0' 'mlflow[kubernetes]>=3.11.0'\
+          \ 'safetensors>=0.4.0' 'accelerate>=0.30.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef publish_approved_model():\n    \"\"\"Exporta modelo aprovado\
+          \ -> S3 -> Model Registry.\"\"\"\n    import os\n    import subprocess\n\
+          \    import sys\n\n    project_root = \"/opt/app-root/src/customer-intent-demo\"\
+          \n    os.environ.setdefault(\"MLFLOW_TRACKING_AUTH\", \"kubernetes-namespaced\"\
+          )\n    os.environ.setdefault(\"HF_HOME\", \"/opt/app-root/src/model-cache\"\
+          )\n    os.environ.setdefault(\"TRANSFORMERS_CACHE\", \"/opt/app-root/src/model-cache\"\
+          )\n    cmd = [sys.executable, f\"{project_root}/training/publish_approved_model.py\"\
+          ]\n    print(\">>>\", \" \".join(cmd), flush=True)\n    subprocess.run(cmd,\
+          \ check=True, cwd=project_root)\n\n"
+        env:
+        - name: MLFLOW_TRACKING_AUTH
+          value: kubernetes-namespaced
+        - name: HF_HOME
+          value: /opt/app-root/src/model-cache
+        - name: TRANSFORMERS_CACHE
+          value: /opt/app-root/src/model-cache
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+    exec-train-baseline:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_baseline
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'datasets>=3.0.0'\
+          \ 'transformers>=4.40.0' 'scikit-learn>=1.4.0' 'pandas>=2.2.0' 'matplotlib>=3.8.0'\
+          \ 'seaborn>=0.13.0' 'pyyaml>=6.0.0' 'boto3>=1.34.0' 'mlflow[kubernetes]>=3.11.0'\
+          \ 'safetensors>=0.4.0' 'accelerate>=0.30.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_baseline():\n    \"\"\"Baseline TF-IDF + Logistic Regression\
+          \ (referencia CPU).\"\"\"\n    import os\n    import subprocess\n    import\
+          \ sys\n\n    project_root = \"/opt/app-root/src/customer-intent-demo\"\n\
+          \    os.environ.setdefault(\"MLFLOW_TRACKING_AUTH\", \"kubernetes-namespaced\"\
+          )\n    os.environ.setdefault(\"HF_HOME\", \"/opt/app-root/src/model-cache\"\
+          )\n    os.environ.setdefault(\"TRANSFORMERS_CACHE\", \"/opt/app-root/src/model-cache\"\
+          )\n    cmd = [sys.executable, f\"{project_root}/training/train_baseline.py\"\
+          ]\n    print(\">>>\", \" \".join(cmd), flush=True)\n    subprocess.run(cmd,\
+          \ check=True, cwd=project_root)\n\n"
+        env:
+        - name: MLFLOW_TRACKING_AUTH
+          value: kubernetes-namespaced
+        - name: HF_HOME
+          value: /opt/app-root/src/model-cache
+        - name: TRANSFORMERS_CACHE
+          value: /opt/app-root/src/model-cache
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+    exec-train-distilbert-aggressive:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_distilbert_aggressive
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'datasets>=3.0.0'\
+          \ 'transformers>=4.40.0' 'scikit-learn>=1.4.0' 'pandas>=2.2.0' 'matplotlib>=3.8.0'\
+          \ 'seaborn>=0.13.0' 'pyyaml>=6.0.0' 'boto3>=1.34.0' 'mlflow[kubernetes]>=3.11.0'\
+          \ 'safetensors>=0.4.0' 'accelerate>=0.30.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_distilbert_aggressive(learning_rate: float, epochs: int):\n\
+          \    \"\"\"DistilBERT agressivo (GPU).\"\"\"\n    import os\n    import\
+          \ subprocess\n    import sys\n\n    project_root = \"/opt/app-root/src/customer-intent-demo\"\
+          \n    os.environ.setdefault(\"MLFLOW_TRACKING_AUTH\", \"kubernetes-namespaced\"\
+          )\n    os.environ.setdefault(\"HF_HOME\", \"/opt/app-root/src/model-cache\"\
+          )\n    os.environ.setdefault(\"TRANSFORMERS_CACHE\", \"/opt/app-root/src/model-cache\"\
+          )\n    cmd = [\n        sys.executable,\n        f\"{project_root}/training/train_distilbert.py\"\
+          ,\n        \"--experiment\",\n        \"distilbert_aggressive\",\n     \
+          \   \"--learning-rate\",\n        str(learning_rate),\n        \"--epochs\"\
+          ,\n        str(epochs),\n    ]\n    print(\">>>\", \" \".join(cmd), flush=True)\n\
+          \    subprocess.run(cmd, check=True, cwd=project_root)\n\n"
+        env:
+        - name: MLFLOW_TRACKING_AUTH
+          value: kubernetes-namespaced
+        - name: HF_HOME
+          value: /opt/app-root/src/model-cache
+        - name: TRANSFORMERS_CACHE
+          value: /opt/app-root/src/model-cache
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+        resources:
+          accelerator:
+            count: '1'
+            resourceCount: '1'
+            resourceType: nvidia.com/gpu
+            type: nvidia.com/gpu
+          cpuLimit: 4.0
+          cpuRequest: 4.0
+          memoryLimit: 17.179869184
+          memoryRequest: 17.179869184
+          resourceCpuLimit: '4'
+          resourceCpuRequest: '4'
+          resourceMemoryLimit: 16Gi
+          resourceMemoryRequest: 16Gi
+    exec-train-distilbert-conservative:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_distilbert_conservative
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'datasets>=3.0.0'\
+          \ 'transformers>=4.40.0' 'scikit-learn>=1.4.0' 'pandas>=2.2.0' 'matplotlib>=3.8.0'\
+          \ 'seaborn>=0.13.0' 'pyyaml>=6.0.0' 'boto3>=1.34.0' 'mlflow[kubernetes]>=3.11.0'\
+          \ 'safetensors>=0.4.0' 'accelerate>=0.30.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_distilbert_conservative(learning_rate: float, epochs: int):\n\
+          \    \"\"\"DistilBERT conservador (GPU).\"\"\"\n    import os\n    import\
+          \ subprocess\n    import sys\n\n    project_root = \"/opt/app-root/src/customer-intent-demo\"\
+          \n    os.environ.setdefault(\"MLFLOW_TRACKING_AUTH\", \"kubernetes-namespaced\"\
+          )\n    os.environ.setdefault(\"HF_HOME\", \"/opt/app-root/src/model-cache\"\
+          )\n    os.environ.setdefault(\"TRANSFORMERS_CACHE\", \"/opt/app-root/src/model-cache\"\
+          )\n    cmd = [\n        sys.executable,\n        f\"{project_root}/training/train_distilbert.py\"\
+          ,\n        \"--experiment\",\n        \"distilbert_conservative\",\n   \
+          \     \"--learning-rate\",\n        str(learning_rate),\n        \"--epochs\"\
+          ,\n        str(epochs),\n    ]\n    print(\">>>\", \" \".join(cmd), flush=True)\n\
+          \    subprocess.run(cmd, check=True, cwd=project_root)\n\n"
+        env:
+        - name: MLFLOW_TRACKING_AUTH
+          value: kubernetes-namespaced
+        - name: HF_HOME
+          value: /opt/app-root/src/model-cache
+        - name: TRANSFORMERS_CACHE
+          value: /opt/app-root/src/model-cache
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+        resources:
+          accelerator:
+            count: '1'
+            resourceCount: '1'
+            resourceType: nvidia.com/gpu
+            type: nvidia.com/gpu
+          cpuLimit: 4.0
+          cpuRequest: 4.0
+          memoryLimit: 17.179869184
+          memoryRequest: 17.179869184
+          resourceCpuLimit: '4'
+          resourceCpuRequest: '4'
+          resourceMemoryLimit: 16Gi
+          resourceMemoryRequest: 16Gi
+    exec-train-distilbert-intermediate:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_distilbert_intermediate
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'datasets>=3.0.0'\
+          \ 'transformers>=4.40.0' 'scikit-learn>=1.4.0' 'pandas>=2.2.0' 'matplotlib>=3.8.0'\
+          \ 'seaborn>=0.13.0' 'pyyaml>=6.0.0' 'boto3>=1.34.0' 'mlflow[kubernetes]>=3.11.0'\
+          \ 'safetensors>=0.4.0' 'accelerate>=0.30.0'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_distilbert_intermediate(learning_rate: float, epochs: int):\n\
+          \    \"\"\"DistilBERT intermediario (GPU).\"\"\"\n    import os\n    import\
+          \ subprocess\n    import sys\n\n    project_root = \"/opt/app-root/src/customer-intent-demo\"\
+          \n    os.environ.setdefault(\"MLFLOW_TRACKING_AUTH\", \"kubernetes-namespaced\"\
+          )\n    os.environ.setdefault(\"HF_HOME\", \"/opt/app-root/src/model-cache\"\
+          )\n    os.environ.setdefault(\"TRANSFORMERS_CACHE\", \"/opt/app-root/src/model-cache\"\
+          )\n    cmd = [\n        sys.executable,\n        f\"{project_root}/training/train_distilbert.py\"\
+          ,\n        \"--experiment\",\n        \"distilbert_intermediate\",\n   \
+          \     \"--learning-rate\",\n        str(learning_rate),\n        \"--epochs\"\
+          ,\n        str(epochs),\n    ]\n    print(\">>>\", \" \".join(cmd), flush=True)\n\
+          \    subprocess.run(cmd, check=True, cwd=project_root)\n\n"
+        env:
+        - name: MLFLOW_TRACKING_AUTH
+          value: kubernetes-namespaced
+        - name: HF_HOME
+          value: /opt/app-root/src/model-cache
+        - name: TRANSFORMERS_CACHE
+          value: /opt/app-root/src/model-cache
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/pytorch:3.4
+        resources:
+          accelerator:
+            count: '1'
+            resourceCount: '1'
+            resourceType: nvidia.com/gpu
+            type: nvidia.com/gpu
+          cpuLimit: 4.0
+          cpuRequest: 4.0
+          memoryLimit: 17.179869184
+          memoryRequest: 17.179869184
+          resourceCpuLimit: '4'
+          resourceCpuRequest: '4'
+          resourceMemoryLimit: 16Gi
+          resourceMemoryRequest: 16Gi
+pipelineInfo:
+  description: 'Pipeline reproduzivel: preparacao Banking77 (12 intencoes), baseline,
+    3 fine-tunings DistilBERT em sequencia (1 GPU), selecao MLflow e publicacao do
+    modelo aprovado.'
+  name: banking77-customer-intent-training
+root:
+  dag:
+    tasks:
+      evaluate-and-select:
+        cachingOptions: {}
+        componentRef:
+          name: comp-evaluate-and-select
+        dependentTasks:
+        - train-baseline
+        - train-distilbert-aggressive
+        - train-distilbert-conservative
+        - train-distilbert-intermediate
+        inputs:
+          parameters:
+            max_incorrect_auto_routing_rate:
+              componentInputParameter: max_incorrect_auto_routing_rate
+            min_validation_macro_f1:
+              componentInputParameter: min_validation_macro_f1
+            routing_threshold:
+              componentInputParameter: routing_threshold
+        taskInfo:
+          name: 4. Avaliar e selecionar
+      prepare-dataset:
+        cachingOptions: {}
+        componentRef:
+          name: comp-prepare-dataset
+        inputs:
+          parameters:
+            random_seed:
+              componentInputParameter: random_seed
+            validation_split:
+              componentInputParameter: validation_split
+        taskInfo:
+          name: 1. Preparar dataset
+      publish-approved-model:
+        cachingOptions: {}
+        componentRef:
+          name: comp-publish-approved-model
+        dependentTasks:
+        - evaluate-and-select
+        taskInfo:
+          name: 5. Publicar modelo aprovado
+      train-baseline:
+        cachingOptions: {}
+        componentRef:
+          name: comp-train-baseline
+        dependentTasks:
+        - prepare-dataset
+        taskInfo:
+          name: 2. Baseline TF-IDF
+      train-distilbert-aggressive:
+        cachingOptions: {}
+        componentRef:
+          name: comp-train-distilbert-aggressive
+        dependentTasks:
+        - train-distilbert-intermediate
+        inputs:
+          parameters:
+            epochs:
+              componentInputParameter: epochs_aggressive
+            learning_rate:
+              componentInputParameter: lr_aggressive
+        taskInfo:
+          name: 3c. DistilBERT agressivo
+      train-distilbert-conservative:
+        cachingOptions: {}
+        componentRef:
+          name: comp-train-distilbert-conservative
+        dependentTasks:
+        - train-baseline
+        inputs:
+          parameters:
+            epochs:
+              componentInputParameter: epochs_conservative
+            learning_rate:
+              componentInputParameter: lr_conservative
+        taskInfo:
+          name: 3a. DistilBERT conservador
+      train-distilbert-intermediate:
+        cachingOptions: {}
+        componentRef:
+          name: comp-train-distilbert-intermediate
+        dependentTasks:
+        - train-distilbert-conservative
+        inputs:
+          parameters:
+            epochs:
+              componentInputParameter: epochs_intermediate
+            learning_rate:
+              componentInputParameter: lr_intermediate
+        taskInfo:
+          name: 3b. DistilBERT intermediario
+  inputDefinitions:
+    parameters:
+      epochs_aggressive:
+        defaultValue: 3.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      epochs_conservative:
+        defaultValue: 2.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      epochs_intermediate:
+        defaultValue: 3.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      lr_aggressive:
+        defaultValue: 0.0001
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      lr_conservative:
+        defaultValue: 2.0e-05
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      lr_intermediate:
+        defaultValue: 5.0e-05
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      max_incorrect_auto_routing_rate:
+        defaultValue: 0.08
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      min_validation_macro_f1:
+        defaultValue: 0.75
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      random_seed:
+        defaultValue: 42.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      routing_threshold:
+        defaultValue: 0.8
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      validation_split:
+        defaultValue: 0.1
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-evaluate-and-select:
+          pvcMount:
+          - constant: banking77-training
+            mountPath: /opt/app-root/src
+            pvcNameParameter:
+              runtimeValue:
+                constant: banking77-training
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            - envVar: AWS_DEFAULT_REGION
+              secretKey: AWS_DEFAULT_REGION
+            - envVar: AWS_S3_ENDPOINT
+              secretKey: AWS_S3_ENDPOINT
+            - envVar: AWS_S3_BUCKET
+              secretKey: AWS_S3_BUCKET
+            optional: false
+            secretName: customer-intent-s3-connection
+            secretNameParameter:
+              runtimeValue:
+                constant: customer-intent-s3-connection
+        exec-prepare-dataset:
+          pvcMount:
+          - constant: banking77-training
+            mountPath: /opt/app-root/src
+            pvcNameParameter:
+              runtimeValue:
+                constant: banking77-training
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            - envVar: AWS_DEFAULT_REGION
+              secretKey: AWS_DEFAULT_REGION
+            - envVar: AWS_S3_ENDPOINT
+              secretKey: AWS_S3_ENDPOINT
+            - envVar: AWS_S3_BUCKET
+              secretKey: AWS_S3_BUCKET
+            optional: false
+            secretName: customer-intent-s3-connection
+            secretNameParameter:
+              runtimeValue:
+                constant: customer-intent-s3-connection
+        exec-publish-approved-model:
+          pvcMount:
+          - constant: banking77-training
+            mountPath: /opt/app-root/src
+            pvcNameParameter:
+              runtimeValue:
+                constant: banking77-training
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            - envVar: AWS_DEFAULT_REGION
+              secretKey: AWS_DEFAULT_REGION
+            - envVar: AWS_S3_ENDPOINT
+              secretKey: AWS_S3_ENDPOINT
+            - envVar: AWS_S3_BUCKET
+              secretKey: AWS_S3_BUCKET
+            optional: false
+            secretName: customer-intent-s3-connection
+            secretNameParameter:
+              runtimeValue:
+                constant: customer-intent-s3-connection
+        exec-train-baseline:
+          pvcMount:
+          - constant: banking77-training
+            mountPath: /opt/app-root/src
+            pvcNameParameter:
+              runtimeValue:
+                constant: banking77-training
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            - envVar: AWS_DEFAULT_REGION
+              secretKey: AWS_DEFAULT_REGION
+            - envVar: AWS_S3_ENDPOINT
+              secretKey: AWS_S3_ENDPOINT
+            - envVar: AWS_S3_BUCKET
+              secretKey: AWS_S3_BUCKET
+            optional: false
+            secretName: customer-intent-s3-connection
+            secretNameParameter:
+              runtimeValue:
+                constant: customer-intent-s3-connection
+        exec-train-distilbert-aggressive:
+          pvcMount:
+          - constant: banking77-training
+            mountPath: /opt/app-root/src
+            pvcNameParameter:
+              runtimeValue:
+                constant: banking77-training
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            - envVar: AWS_DEFAULT_REGION
+              secretKey: AWS_DEFAULT_REGION
+            - envVar: AWS_S3_ENDPOINT
+              secretKey: AWS_S3_ENDPOINT
+            - envVar: AWS_S3_BUCKET
+              secretKey: AWS_S3_BUCKET
+            optional: false
+            secretName: customer-intent-s3-connection
+            secretNameParameter:
+              runtimeValue:
+                constant: customer-intent-s3-connection
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Exists
+        exec-train-distilbert-conservative:
+          pvcMount:
+          - constant: banking77-training
+            mountPath: /opt/app-root/src
+            pvcNameParameter:
+              runtimeValue:
+                constant: banking77-training
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            - envVar: AWS_DEFAULT_REGION
+              secretKey: AWS_DEFAULT_REGION
+            - envVar: AWS_S3_ENDPOINT
+              secretKey: AWS_S3_ENDPOINT
+            - envVar: AWS_S3_BUCKET
+              secretKey: AWS_S3_BUCKET
+            optional: false
+            secretName: customer-intent-s3-connection
+            secretNameParameter:
+              runtimeValue:
+                constant: customer-intent-s3-connection
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Exists
+        exec-train-distilbert-intermediate:
+          pvcMount:
+          - constant: banking77-training
+            mountPath: /opt/app-root/src
+            pvcNameParameter:
+              runtimeValue:
+                constant: banking77-training
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            - envVar: AWS_DEFAULT_REGION
+              secretKey: AWS_DEFAULT_REGION
+            - envVar: AWS_S3_ENDPOINT
+              secretKey: AWS_S3_ENDPOINT
+            - envVar: AWS_S3_BUCKET
+              secretKey: AWS_S3_BUCKET
+            optional: false
+            secretName: customer-intent-s3-connection
+            secretNameParameter:
+              runtimeValue:
+                constant: customer-intent-s3-connection
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Exists
